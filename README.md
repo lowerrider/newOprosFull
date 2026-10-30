@@ -43,27 +43,7 @@ cd backend && npm run import-members -- ../frontend/src/assets/members.json
 
 Настройки те же, что в omega-web (`SMTP_HOST=mail.mega-personal.ru`, порт 587, `no-reply@mega-personal.ru`). Пароль ящика впишите в `SMTP_PASS` в `backend/.env`, в репозиторий он не попадает.
 
-## Деплой на VPS
+## Запуск на сервере
 
-Нужен Node.js 22.13+ (база работает на встроенном в Node SQLite, ничего собирать не нужно).
-
-```sh
-git clone <repo> && cd Opros/backend
-npm install --omit=dev
-cp .env.example .env   # NODE_ENV=production, JWT_SECRET, ADMIN_*, CORS_ORIGIN, APP_URL, SMTP_*
-NODE_ENV=production npm start
-```
-
-Чтобы сервер работал постоянно, запустите его через pm2 (`pm2 start npm --name opros -- start`) или systemd, а перед ним поставьте nginx с HTTPS (Let's Encrypt), проксирующий на порт 3000.
-
-Резервная копия базы: скопируйте файл `backend/data/opros.db` (лучше при остановленном сервере или через `sqlite3 opros.db ".backup backup.db"`).
-
-Клиент можно по-прежнему публиковать на GitHub Pages:
-
-```sh
-cd frontend
-echo "VITE_API_URL=https://ваш-домен/api" > .env.production
-npm run build && npm run deploy
-```
-
-Адрес GitHub Pages должен быть указан в `CORS_ORIGIN` на сервере.
+Пошаговая инструкция и скрипты лежат в [deploy/README.md](deploy/README.md): первый запуск
+одной командой (`deploy/setup.sh`), обновление (`deploy/update.sh`), бэкапы, HTTPS.

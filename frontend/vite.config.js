@@ -11,5 +11,6 @@ export default defineConfig({
     },
   },
 
-  base: process.env.NODE_ENV === "production" ? "/Opros/" : "/",
+  // Сайт живёт в корне своего сервера. Для GitHub Pages: VITE_BASE=/репозиторий/ npm run build
+  base: process.env.VITE_BASE || "/",
 });

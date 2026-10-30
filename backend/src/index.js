@@ -4,6 +4,6 @@ import { createApp } from "./app.js";
 import { createMailer } from "./mail.js";
 
 const db = openDb(config.dbPath);
-createApp(db, config, createMailer(config)).listen(config.port, () => {
-  console.log(`API запущен на http://localhost:${config.port}`);
+createApp(db, config, createMailer(config)).listen(config.port, config.host, () => {
+  console.log(`API запущен на http://${config.host}:${config.port}`);
 });

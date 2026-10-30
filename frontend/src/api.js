@@ -1,8 +1,10 @@
 import axios from "axios";
 
-// Адрес бекенда задаётся в .env: VITE_API_URL=https://api.example.ru/api
+// В разработке бекенд на localhost:3000, на сервере nginx отдаёт его по /api того же адреса.
+// Другой адрес можно задать в .env: VITE_API_URL=https://api.example.ru/api
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:3000/api",
+  baseURL:
+    import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "http://localhost:3000/api" : "/api"),
 });
 
 const TOKEN_KEY = "opros_token";

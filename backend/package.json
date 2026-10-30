@@ -7,7 +7,8 @@
     "start": "node --disable-warning=ExperimentalWarning src/index.js",
     "dev": "node --disable-warning=ExperimentalWarning --watch src/index.js",
     "import-members": "node --disable-warning=ExperimentalWarning src/scripts/importMembers.js",
-    "test": "node --disable-warning=ExperimentalWarning --test"
+    "test": "node --disable-warning=ExperimentalWarning --test",
+    "backup": "node --disable-warning=ExperimentalWarning src/scripts/backup.js"
   },
   "engines": {
     "node": ">=22.13"

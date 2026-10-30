@@ -14,6 +14,8 @@ if (fs.existsSync(envPath)) {
 
 export const config = {
   port: Number(process.env.PORT || 3000),
+  // На сервере 127.0.0.1: бекенд доступен только nginx, снаружи порт закрыт
+  host: process.env.HOST || "0.0.0.0",
   dbPath: process.env.DB_PATH || "./data/opros.db",
   jwtSecret: process.env.JWT_SECRET || "dev-secret",
   adminEmail: (process.env.ADMIN_EMAIL || "admin@example.com").toLowerCase(),

@@ -1,0 +1,3 @@
+# Скрипты для сервера должны быть с LF, иначе bash на Linux не запустит их
+*.sh text eol=lf
+deploy/nginx.conf text eol=lf
