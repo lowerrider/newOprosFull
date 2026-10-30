@@ -155,9 +155,9 @@
 
 <script setup>
 import { ref, computed, onMounted } from "vue";
-import { api, errorText } from "../../api";
-import { downloadCsv } from "./csv";
-import { state, reload } from "./store";
+import { api, errorText } from "@/api";
+import { downloadCsv } from "@/utils/csv";
+import { state, reload } from "@/stores/admin";
 
 const participants = computed(() => state.participants);
 const bulkText = ref("");

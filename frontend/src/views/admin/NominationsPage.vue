@@ -75,8 +75,8 @@
 
 <script setup>
 import { ref } from "vue";
-import { api, errorText } from "../../api";
-import { state, reload, roundStatus } from "./store";
+import { api, errorText } from "@/api";
+import { state, reload, roundStatus } from "@/stores/admin";
 
 const newTitle = ref("");
 const newSubtitle = ref("");

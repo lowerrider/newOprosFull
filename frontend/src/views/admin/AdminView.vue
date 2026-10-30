@@ -33,10 +33,10 @@
     <main class="content">
       <p v-if="error" class="alert error">{{ error }}</p>
       <template v-if="state.loaded">
-        <Participants v-if="active === 'participants'" />
-        <Nominations v-else-if="active === 'nominations'" />
-        <Rounds v-else-if="active === 'round1'" key="round1" :round="1" @go="active = $event" />
-        <Rounds v-else key="round2" :round="2" @go="active = $event" />
+        <ParticipantsPage v-if="active === 'participants'" />
+        <NominationsPage v-else-if="active === 'nominations'" />
+        <RoundPage v-else-if="active === 'round1'" key="round1" :round="1" @go="active = $event" />
+        <RoundPage v-else key="round2" :round="2" @go="active = $event" />
       </template>
     </main>
   </div>
@@ -45,11 +45,11 @@
 <script setup>
 import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
-import { session, errorText } from "../../api";
-import { state, reload, roundStatus, statusText } from "./store";
-import Participants from "./Participants.vue";
-import Nominations from "./Nominations.vue";
-import Rounds from "./Rounds.vue";
+import { session, errorText } from "@/api";
+import { state, reload, roundStatus, statusText } from "@/stores/admin";
+import ParticipantsPage from "./ParticipantsPage.vue";
+import NominationsPage from "./NominationsPage.vue";
+import RoundPage from "./RoundPage.vue";
 
 const router = useRouter();
 const active = ref("participants");

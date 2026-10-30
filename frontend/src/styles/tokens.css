@@ -1,0 +1,17 @@
+/* Цвета и шрифты праздничной части (по макету) */
+:root {
+  --night: #121833;
+  --night-2: #1b2347;
+  --ring: #232c55;
+  --text: #ffffff;
+  --text-soft: rgba(255, 255, 255, 0.78);
+  --orange: #ff4d00;
+  --orange-hover: #ff6a26;
+  --pine: #0d6b33;
+  --bulb-red: #e8212b;
+  --bulb-yellow: #f7b733;
+  --bulb-blue: #2fc6f2;
+  --danger: #ff7a7a;
+  --success: #7be0a2;
+  --font: "Montserrat", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+}

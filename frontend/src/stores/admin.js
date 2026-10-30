@@ -1,5 +1,5 @@
 import { reactive } from "vue";
-import { api } from "../../api";
+import { api } from "@/api";
 
 // Общие данные админки: участники, номинации (с номинантами обоих туров) и туры
 export const state = reactive({

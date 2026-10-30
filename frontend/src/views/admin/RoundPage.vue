@@ -165,10 +165,10 @@
 
 <script setup>
 import { ref, reactive, computed, watch, onMounted, onUnmounted } from "vue";
-import { api, errorText } from "../../api";
-import { downloadCsv } from "./csv";
-import { state, reload, roundStatus, statusText } from "./store";
-import CandidatePicker from "./CandidatePicker.vue";
+import { api, errorText } from "@/api";
+import { downloadCsv } from "@/utils/csv";
+import { state, reload, roundStatus, statusText } from "@/stores/admin";
+import CandidatePicker from "@/components/admin/CandidatePicker.vue";
 
 const props = defineProps({ round: { type: Number, required: true } });
 const emit = defineEmits(["go"]);
