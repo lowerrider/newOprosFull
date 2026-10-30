@@ -126,6 +126,15 @@ onMounted(async () => {
 .admin *::after {
   box-sizing: border-box;
 }
+/* Глобальные стили кнопок голосования (base.css) в админке не нужны:
+   белый «блик» ::after и подпрыгивание при наведении */
+.admin button::after {
+  display: none !important;
+}
+.admin button:hover {
+  transform: none;
+  box-shadow: none;
+}
 .admin .sidebar {
   width: 250px;
   flex-shrink: 0;
@@ -300,9 +309,6 @@ onMounted(async () => {
   font-weight: 500;
   cursor: pointer;
   transition: filter 0.15s;
-}
-.admin .content button::after {
-  display: none;
 }
 .admin .content button:hover {
   transform: none;
