@@ -45,16 +45,16 @@ cd backend && npm run import-members -- ../frontend/src/assets/members.json
 
 ## Деплой на VPS
 
-Нужен Node.js 20+.
+Нужен Node.js 22.13+ (база работает на встроенном в Node SQLite, ничего собирать не нужно).
 
 ```sh
 git clone <repo> && cd Opros/backend
 npm install --omit=dev
 cp .env.example .env   # NODE_ENV=production, JWT_SECRET, ADMIN_*, CORS_ORIGIN, APP_URL, SMTP_*
-NODE_ENV=production node src/index.js
+NODE_ENV=production npm start
 ```
 
-Чтобы сервер работал постоянно, запустите его через pm2 (`pm2 start src/index.js --name opros`) или systemd, а перед ним поставьте nginx с HTTPS (Let's Encrypt), проксирующий на порт 3000.
+Чтобы сервер работал постоянно, запустите его через pm2 (`pm2 start npm --name opros -- start`) или systemd, а перед ним поставьте nginx с HTTPS (Let's Encrypt), проксирующий на порт 3000.
 
 Резервная копия базы: скопируйте файл `backend/data/opros.db` (лучше при остановленном сервере или через `sqlite3 opros.db ".backup backup.db"`).
 

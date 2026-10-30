@@ -46,10 +46,10 @@
         видны один раз, сразу после генерации. Скачайте файл и разошлите пароли участникам.
       </p>
       <div class="row">
-        <button type="button" @click="generate({ onlyMissing: true })">
-          Сгенерировать тем, у кого нет пароля
+        <button type="button" :disabled="generating" @click="generate({ onlyMissing: true })">
+          {{ generating ? "Генерация..." : "Сгенерировать тем, у кого нет пароля" }}
         </button>
-        <button type="button" class="secondary" @click="regenerateAll">
+        <button type="button" class="secondary" :disabled="generating" @click="regenerateAll">
           Перевыпустить всем
         </button>
       </div>
@@ -126,6 +126,7 @@ const editingId = ref(null);
 const editForm = ref({ name: "", email: "" });
 const mailConfigured = ref(null);
 const sending = ref(false);
+const generating = ref(false);
 const mailResult = ref(null);
 
 const notSentCount = computed(
@@ -181,10 +182,13 @@ const addBulk = () =>
     bulkText.value = "";
   });
 
-const generate = (options) =>
-  run(async () => {
+const generate = async (options) => {
+  generating.value = true;
+  await run(async () => {
     credentials.value = (await api.post("/admin/participants/passwords", options)).data;
   });
+  generating.value = false;
+};
 
 const regenerateAll = () => {
   if (confirm("Старые пароли перестанут работать у всех участников. Продолжить?")) {

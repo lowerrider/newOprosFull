@@ -4,17 +4,16 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node src/index.js",
-    "dev": "node --watch src/index.js",
-    "import-members": "node src/scripts/importMembers.js",
-    "test": "node --test"
+    "start": "node --disable-warning=ExperimentalWarning src/index.js",
+    "dev": "node --disable-warning=ExperimentalWarning --watch src/index.js",
+    "import-members": "node --disable-warning=ExperimentalWarning src/scripts/importMembers.js",
+    "test": "node --disable-warning=ExperimentalWarning --test"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.13"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
-    "better-sqlite3": "^13.0.3",
     "cors": "^2.8.6",
     "express": "^5.3.0",
     "jsonwebtoken": "^9.0.3",

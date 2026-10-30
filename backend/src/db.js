@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import Database from "better-sqlite3";
+import { DatabaseSync } from "node:sqlite";
 
 const schema = `
 CREATE TABLE IF NOT EXISTS participants (
@@ -56,9 +56,22 @@ export function openDb(dbPath) {
   if (dbPath !== ":memory:") {
     fs.mkdirSync(path.dirname(path.resolve(dbPath)), { recursive: true });
   }
-  const db = new Database(dbPath);
-  db.pragma("journal_mode = WAL");
-  db.pragma("foreign_keys = ON");
+  // Встроенный в Node SQLite: ничего не нужно собирать при npm install
+  const db = new DatabaseSync(dbPath);
+  db.exec("PRAGMA journal_mode = WAL");
+  db.exec("PRAGMA foreign_keys = ON");
+  // Обёртка: fn выполняется в транзакции, при ошибке всё откатывается
+  db.transaction = (fn) => (...args) => {
+    db.exec("BEGIN");
+    try {
+      const result = fn(...args);
+      db.exec("COMMIT");
+      return result;
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  };
   db.exec(schema);
   // Миграция баз, созданных до появления рассылки
   const columns = db.prepare("PRAGMA table_info(participants)").all().map((c) => c.name);

@@ -18,7 +18,8 @@ export function createApp(db, config, mailer = { configured: false }) {
     if (err.status) {
       return res.status(err.status).json({ error: err.message });
     }
-    if (err.code === "SQLITE_CONSTRAINT_UNIQUE") {
+    // 2067 = SQLITE_CONSTRAINT_UNIQUE
+    if (err.errcode === 2067) {
       return res.status(409).json({ error: "Такая запись уже есть" });
     }
     console.error(err);
