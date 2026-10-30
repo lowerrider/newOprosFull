@@ -6,6 +6,15 @@
       поправить, пока 2 тур не открыт.
     </p>
 
+    <div v-if="nominations.length && roundEditable(1)" class="card">
+      <div class="row" style="margin: 0">
+        <button type="button" :disabled="!participants.length" @click="fillAll">
+          Все участники во все номинации 1 тура
+        </button>
+        <span class="muted">Затем в нужной номинации снимите галочки с тех, кто не участвует.</span>
+      </div>
+    </div>
+
     <div v-for="n in nominations" :key="n.id" class="card">
       <div class="row">
         <input v-model="n.title" placeholder="Название" style="flex: 1; min-width: 220px" />
@@ -23,19 +32,17 @@
         <p v-if="round === 2 && !selected[n.id][2].length" class="muted">
           Заполняются автоматически кнопкой «Сформировать 2 тур» на вкладке «Туры».
         </p>
-        <div class="select-wrap">
-          <VueSelect
-            v-model="selected[n.id][round]"
-            :options="participantOptions"
-            :isMulti="true"
-            :isDisabled="!roundEditable(round)"
-            placeholder="Выберите участников" />
-        </div>
+        <CandidatePicker
+          v-model="selected[n.id][round]"
+          :participants="round === 1 ? participants : roundTwoPool(n)"
+          :disabled="!roundEditable(round)"
+          :copySources="round === 1 ? copySources(n) : []" />
         <div class="row" style="margin-top: 8px">
           <button type="button" :disabled="!roundEditable(round)" @click="saveCandidates(n, round)">
             Сохранить номинантов {{ round }} тура
           </button>
           <span v-if="saved === `${n.id}-${round}`" class="ok">Сохранено</span>
+          <span v-else-if="isDirty(n.id, round)" class="error">Есть несохранённые изменения</span>
         </div>
       </div>
     </div>
@@ -54,8 +61,8 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from "vue";
-import VueSelect from "vue3-select-component";
+import { ref, onMounted } from "vue";
+import CandidatePicker from "./CandidatePicker.vue";
 import { api, errorText } from "../../api";
 
 const nominations = ref([]);
@@ -63,14 +70,25 @@ const participants = ref([]);
 const rounds = ref([]);
 // selected[nominationId][round] = [participantId, ...]
 const selected = ref({});
+// Сохранённый на сервере состав, чтобы подсвечивать несохранённые изменения
+const savedState = ref({});
+const key = (ids) => [...ids].sort((a, b) => a - b).join(",");
+const isDirty = (id, round) => key(selected.value[id][round]) !== savedState.value[id]?.[round];
 const newTitle = ref("");
 const newSubtitle = ref("");
 const error = ref("");
 const saved = ref("");
 
-const participantOptions = computed(() =>
-  participants.value.map((p) => ({ label: p.name, value: p.id }))
-);
+// Во 2 туре выбираем из номинантов 1 тура этой номинации (и уже выбранных во 2 тур)
+const roundTwoPool = (n) => {
+  const ids = new Set([...selected.value[n.id][1], ...selected.value[n.id][2]]);
+  return participants.value.filter((p) => ids.has(p.id));
+};
+
+const copySources = (n) =>
+  nominations.value
+    .filter((other) => other.id !== n.id && selected.value[other.id][1].length)
+    .map((other) => ({ key: String(other.id), title: other.title, ids: selected.value[other.id][1] }));
 
 const roundEditable = (number) =>
   rounds.value.find((r) => r.number === number)?.status === "draft";
@@ -89,6 +107,9 @@ const load = async () => {
         nom.id,
         { 1: nom.candidates[1].map((c) => c.id), 2: nom.candidates[2].map((c) => c.id) },
       ])
+    );
+    savedState.value = Object.fromEntries(
+      Object.entries(selected.value).map(([id, rounds]) => [id, { 1: key(rounds[1]), 2: key(rounds[2]) }])
     );
     nominations.value = n.data;
   } catch (e) {
@@ -122,11 +143,22 @@ const removeNomination = (n) => {
   }
 };
 
+const fillAll = () => {
+  if (!confirm("Поставить всех участников номинантами во все номинации 1 тура?")) return;
+  run(async () => {
+    const all = participants.value.map((p) => p.id);
+    for (const n of nominations.value) {
+      await api.put(`/admin/rounds/1/nominations/${n.id}/candidates`, { participantIds: all });
+    }
+  });
+};
+
 const saveCandidates = (n, round) =>
   run(async () => {
     await api.put(`/admin/rounds/${round}/nominations/${n.id}/candidates`, {
       participantIds: selected.value[n.id][round],
     });
+    savedState.value[n.id][round] = key(selected.value[n.id][round]);
     saved.value = `${n.id}-${round}`;
     setTimeout(() => (saved.value = ""), 2000);
   }, false);

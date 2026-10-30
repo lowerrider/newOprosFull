@@ -33,6 +33,6 @@ coverage
 .env.production
 
 dist
-frontend/src/assets/members.json
+
 frontend/src/assets/firsttour.json
 frontend/src/assets/secondTour.json
