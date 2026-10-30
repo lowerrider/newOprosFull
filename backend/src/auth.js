@@ -23,23 +23,31 @@ export function requireRole(role, secret) {
   };
 }
 
-// Простое ограничение попыток входа: не больше `limit` за `windowMs` с одного IP
-export function loginLimiter({ limit = 10, windowMs = 15 * 60 * 1000 } = {}) {
-  const hits = new Map();
-  return (req, res, next) => {
-    const now = Date.now();
-    const key = req.ip;
-    const entry = hits.get(key);
-    if (!entry || entry.resetAt < now) {
-      hits.set(key, { count: 1, resetAt: now + windowMs });
-      return next();
-    }
-    entry.count++;
-    if (entry.count > limit) {
-      return res
-        .status(429)
-        .json({ error: "Слишком много попыток, попробуйте через 15 минут" });
-    }
-    next();
+// Ограничение неудачных попыток входа: не больше `limit` ошибок за `windowMs` для пары IP + email.
+// Успешные входы не считаются: в офисе сотни людей могут заходить с одного IP.
+export function createLoginGuard({ limit = 10, windowMs = 15 * 60 * 1000 } = {}) {
+  const failures = new Map();
+  const keyOf = (req) => `${req.ip}|${String(req.body?.email || "").trim().toLowerCase()}`;
+
+  return {
+    check(req, res, next) {
+      const entry = failures.get(keyOf(req));
+      if (entry && entry.resetAt > Date.now() && entry.count >= limit) {
+        return res
+          .status(429)
+          .json({ error: "Слишком много неверных попыток, попробуйте через 15 минут" });
+      }
+      next();
+    },
+    fail(req) {
+      const key = keyOf(req);
+      const now = Date.now();
+      const entry = failures.get(key);
+      if (!entry || entry.resetAt < now) failures.set(key, { count: 1, resetAt: now + windowMs });
+      else entry.count++;
+    },
+    succeed(req) {
+      failures.delete(keyOf(req));
+    },
   };
 }

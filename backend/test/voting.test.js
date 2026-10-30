@@ -150,3 +150,20 @@ test("полный сценарий: участники, пароли, два т
     server.close();
   }
 });
+
+test("вход: много успешных входов с одного IP не блокируются, перебор пароля блокируется", async () => {
+  const { server, call } = await startServer();
+  try {
+    for (let i = 0; i < 15; i++) {
+      assert.equal((await call("POST", "/auth/login", { email: "admin@test", password: "adminpass" })).status, 200);
+    }
+    for (let i = 0; i < 10; i++) {
+      assert.equal((await call("POST", "/auth/login", { email: "x@test.ru", password: "bad" })).status, 401);
+    }
+    assert.equal((await call("POST", "/auth/login", { email: "x@test.ru", password: "bad" })).status, 429);
+    // другой email с того же IP не заблокирован
+    assert.equal((await call("POST", "/auth/login", { email: "admin@test", password: "adminpass" })).status, 200);
+  } finally {
+    server.close();
+  }
+});
