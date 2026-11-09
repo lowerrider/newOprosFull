@@ -3,14 +3,17 @@
     <h1 class="title">{{ nomination.title }}</h1>
     <p v-if="nomination.subtitle" class="subtitle">{{ nomination.subtitle }}</p>
 
-    <VueSelect
-      class="select"
-      :inputId="`nomination-${nomination.id}`"
-      :modelValue="modelValue"
-      :options="options"
-      :isClearable="false"
-      placeholder="Выберите номинанта"
-      @update:modelValue="emit('update:modelValue', $event)" />
+    <div class="picker">
+      <label class="sr-only" :for="`nomination-${nomination.id}`">Выберите номинанта</label>
+      <VueSelect
+        class="select"
+        :inputId="`nomination-${nomination.id}`"
+        :modelValue="modelValue"
+        :options="options"
+        :isClearable="false"
+        placeholder="Выберите номинанта"
+        @update:modelValue="emit('update:modelValue', $event)" />
+    </div>
   </section>
 </template>
 
@@ -26,8 +29,8 @@ const props = defineProps({
 const emit = defineEmits(["update:modelValue"]);
 
 const options = computed(() => [
-  ...props.nomination.candidates.map((c) => ({ label: c.name, value: c.id })),
   { label: "Пропустить номинацию", value: SKIP },
+  ...props.nomination.candidates.map((c) => ({ label: c.name, value: c.id })),
 ]);
 </script>
 
@@ -52,9 +55,12 @@ const options = computed(() => [
   line-height: 1.4;
   color: var(--text-soft);
 }
-.select {
+.picker {
   margin-top: clamp(32px, 6vh, 64px);
-  width: min(520px, 100%);
+  width: min(560px, calc(100vw - 32px));
+}
+.select {
+  width: 100%;
   text-align: left;
   --vs-font-family: var(--font);
   --vs-font-size: 15px;
@@ -74,5 +80,16 @@ const options = computed(() => [
   --vs-option-selected-color: #ffe0d1;
   --vs-option-padding: 10px 14px;
   --vs-icon-color: #ff4d00;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 </style>
