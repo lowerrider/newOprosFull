@@ -73,7 +73,18 @@ apt-get install -y certbot python3-certbot-nginx
 certbot --nginx --redirect -d "$APEX" -d "$DOMAIN"
 
 systemctl restart opros
-curl -fsS http://127.0.0.1:3000/api/health >/dev/null
+BACKEND_READY=""
+for _ in $(seq 1 15); do
+  if curl -fsS http://127.0.0.1:3000/api/health >/dev/null; then
+    BACKEND_READY=1
+    break
+  fi
+  sleep 1
+done
+if [ -z "$BACKEND_READY" ]; then
+  echo "Бекенд не ответил за 15 секунд" >&2
+  false
+fi
 nginx -t
 
 trap - ERR
