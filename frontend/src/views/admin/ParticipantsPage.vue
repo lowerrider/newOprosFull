@@ -98,23 +98,21 @@
           <li v-for="f in mailResult.failed" :key="f.email">{{ f.email }}: {{ f.error }}</li>
         </ul>
 
-        <details class="manual">
-          <summary>Если рассылка недоступна: сгенерировать пароли и скачать CSV</summary>
+        <div class="password-tools">
+          <h3>Сгенерировать пароли всем</h3>
           <p class="muted">
-            Открытые пароли видны один раз, сразу после генерации: в базе хранятся только хеши.
+            Создаст новые пароли сразу для всех участников с email. Старые пароли перестанут
+            работать. Результат можно скачать одним CSV-файлом.
           </p>
           <div class="row">
-            <button type="button" class="secondary" :disabled="generating" @click="generate({ onlyMissing: true })">
-              {{ generating ? "Генерация..." : "Тем, у кого нет пароля" }}
-            </button>
-            <button type="button" class="secondary" :disabled="generating" @click="regenerateAll">
-              Перевыпустить всем
+            <button type="button" class="secondary" :disabled="generating || !participants.length" @click="regenerateAll">
+              {{ generating ? "Генерация…" : `Сгенерировать всем (${participants.length - withoutEmailCount})` }}
             </button>
             <button v-if="credentials.length" type="button" @click="downloadCredentials">
               Скачать CSV ({{ credentials.length }})
             </button>
           </div>
-        </details>
+        </div>
       </div>
     </div>
 
@@ -479,15 +477,14 @@ onMounted(async () => {
   flex: 1;
   background: var(--line);
 }
-.manual {
+.password-tools {
   margin-top: 16px;
   border-top: 1px solid var(--line);
   padding-top: 12px;
 }
-.manual summary {
-  cursor: pointer;
-  color: var(--muted);
-  font-size: 13px;
+.password-tools h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
 }
 .table-wrap {
   max-height: 520px;

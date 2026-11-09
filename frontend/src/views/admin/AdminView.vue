@@ -5,7 +5,7 @@
         <span class="brand-mark">★</span>
         <div>
           <div class="brand-title">Голосование</div>
-          <div class="brand-sub">панель администратора</div>
+          <div class="brand-sub">{{ isSuperAdmin ? "супер-администратор" : "панель администратора" }}</div>
         </div>
       </div>
 
@@ -36,7 +36,8 @@
         <ParticipantsPage v-if="active === 'participants'" />
         <NominationsPage v-else-if="active === 'nominations'" />
         <RoundPage v-else-if="active === 'round1'" key="round1" :round="1" @go="active = $event" />
-        <RoundPage v-else key="round2" :round="2" @go="active = $event" />
+        <RoundPage v-else-if="active === 'round2'" key="round2" :round="2" @go="active = $event" />
+        <VotesAuditPage v-else-if="active === 'voteAudit'" />
       </template>
     </main>
   </div>
@@ -50,10 +51,12 @@ import { state, reload, roundStatus, statusText } from "@/stores/admin";
 import ParticipantsPage from "./ParticipantsPage.vue";
 import NominationsPage from "./NominationsPage.vue";
 import RoundPage from "./RoundPage.vue";
+import VotesAuditPage from "./VotesAuditPage.vue";
 
 const router = useRouter();
 const active = ref("participants");
 const error = ref("");
+const isSuperAdmin = computed(() => session.role === "superadmin");
 
 const roundStep = (number) => {
   const status = roundStatus(number);
@@ -63,8 +66,8 @@ const roundStep = (number) => {
   };
 };
 
-const steps = computed(() => [
-  {
+const steps = computed(() => {
+  const items = [{
     id: "participants",
     title: "Участники",
     hint: `${state.participants.length} чел.`,
@@ -77,8 +80,12 @@ const steps = computed(() => [
     state: state.nominations.length ? "done" : "",
   },
   { id: "round1", title: "1 тур", ...roundStep(1) },
-  { id: "round2", title: "2 тур", ...roundStep(2) },
-]);
+  { id: "round2", title: "2 тур", ...roundStep(2) }];
+  if (isSuperAdmin.value) {
+    items.push({ id: "voteAudit", title: "Кто за кого", hint: "только для вас", state: "private" });
+  }
+  return items;
+});
 
 const logout = () => {
   session.clear();
@@ -206,6 +213,10 @@ onMounted(async () => {
 .admin .step-num.live {
   background: var(--live);
   border-color: var(--live);
+}
+.admin .step-num.private {
+  background: #8b5cf6;
+  border-color: #8b5cf6;
 }
 .admin .step-text {
   display: flex;

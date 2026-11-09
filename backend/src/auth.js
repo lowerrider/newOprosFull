@@ -4,7 +4,7 @@ export function signToken(payload, secret) {
   return jwt.sign(payload, secret, { expiresIn: "12h" });
 }
 
-// role: "voter" | "admin"
+// role: "voter" | "admin" | "superadmin"
 export function requireRole(role, secret) {
   return (req, res, next) => {
     const header = req.headers.authorization || "";
@@ -13,6 +13,24 @@ export function requireRole(role, secret) {
     try {
       const payload = jwt.verify(token, secret);
       if (payload.role !== role) {
+        return res.status(403).json({ error: "Нет доступа" });
+      }
+      req.user = payload;
+      next();
+    } catch {
+      res.status(401).json({ error: "Сессия истекла, войдите заново" });
+    }
+  };
+}
+
+export function requireAnyRole(roles, secret) {
+  return (req, res, next) => {
+    const header = req.headers.authorization || "";
+    const token = header.startsWith("Bearer ") ? header.slice(7) : null;
+    if (!token) return res.status(401).json({ error: "Нужно войти" });
+    try {
+      const payload = jwt.verify(token, secret);
+      if (!roles.includes(payload.role)) {
         return res.status(403).json({ error: "Нет доступа" });
       }
       req.user = payload;

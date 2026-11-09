@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { requireRole } from "../auth.js";
+import { requireAnyRole, requireRole } from "../auth.js";
 import { generatePassword, hashPassword } from "../passwords.js";
 import {
   HttpError,
@@ -22,7 +22,7 @@ function participantEmail(value, name) {
 
 export function adminRoutes(db, config, mailer) {
   const router = Router();
-  router.use(requireRole("admin", config.jwtSecret));
+  router.use(requireAnyRole(["admin", "superadmin"], config.jwtSecret));
 
   const roundParam = (req) => {
     const n = Number(req.params.round);
@@ -139,6 +139,48 @@ export function adminRoutes(db, config, mailer) {
 
   router.get("/mail/status", (req, res) => {
     res.json({ configured: mailer.configured });
+  });
+
+  // Поимённая детализация голосов доступна только супер-администратору.
+  router.get("/vote-audit", requireRole("superadmin", config.jwtSecret), (req, res) => {
+    const rows = db
+      .prepare(
+        `SELECT b.id AS ballotId, b.round, b.created_at AS submittedAt,
+                voter.id AS voterId, voter.name AS voterName, voter.email AS voterEmail,
+                n.id AS nominationId, n.title AS nominationTitle, n.sort_order AS nominationOrder,
+                choice.id AS choiceId, choice.name AS choiceName
+         FROM ballots b
+         JOIN participants voter ON voter.id = b.participant_id
+         JOIN votes v ON v.ballot_id = b.id
+         JOIN nominations n ON n.id = v.nomination_id
+         LEFT JOIN participants choice ON choice.id = v.candidate_id
+         ORDER BY b.round, voter.name, b.id, n.sort_order, n.title`
+      )
+      .all();
+
+    const ballots = [];
+    const byId = new Map();
+    for (const row of rows) {
+      let ballot = byId.get(row.ballotId);
+      if (!ballot) {
+        ballot = {
+          id: row.ballotId,
+          round: row.round,
+          submittedAt: row.submittedAt,
+          voter: { id: row.voterId, name: row.voterName, email: row.voterEmail },
+          choices: [],
+        };
+        byId.set(row.ballotId, ballot);
+        ballots.push(ballot);
+      }
+      ballot.choices.push({
+        nominationId: row.nominationId,
+        nomination: row.nominationTitle,
+        candidateId: row.choiceId,
+        candidate: row.choiceName,
+      });
+    }
+    res.json({ ballots });
   });
 
   // Рассылка логина и пароля на почту. Пароль генерируется заново и сохраняется,

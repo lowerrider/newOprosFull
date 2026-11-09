@@ -14,6 +14,18 @@ export function publicRoutes(db, config) {
 
     if (email === config.adminEmail && password === config.adminPassword) {
       guard.succeed(req);
+      return res.json({
+        token: signToken({ role: "superadmin" }, config.jwtSecret),
+        role: "superadmin",
+      });
+    }
+
+    if (
+      config.regularAdminEmail &&
+      email === config.regularAdminEmail &&
+      password === config.regularAdminPassword
+    ) {
+      guard.succeed(req);
       return res.json({ token: signToken({ role: "admin" }, config.jwtSecret), role: "admin" });
     }
 

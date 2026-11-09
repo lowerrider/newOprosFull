@@ -8,6 +8,8 @@ const config = {
   jwtSecret: "test",
   adminEmail: "admin@test",
   adminPassword: "adminpass",
+  regularAdminEmail: "manager@test",
+  regularAdminPassword: "managerpass",
   corsOrigin: [],
 };
 
@@ -33,7 +35,16 @@ async function startServer() {
 test("импорт участников повторяемый и проверяет email", async () => {
   const { server, call } = await startServer();
   try {
-    const admin = (await call("POST", "/auth/login", { email: "admin@test", password: "adminpass" })).body.token;
+    const superLogin = await call("POST", "/auth/login", { email: "admin@test", password: "adminpass" });
+    const admin = superLogin.body.token;
+    assert.equal(superLogin.body.role, "superadmin");
+    const regularLogin = await call("POST", "/auth/login", {
+      email: "manager@test",
+      password: "managerpass",
+    });
+    assert.equal(regularLogin.body.role, "admin");
+    assert.equal((await call("GET", "/admin/participants", undefined, regularLogin.body.token)).status, 200);
+    assert.equal((await call("GET", "/admin/vote-audit", undefined, regularLogin.body.token)).status, 403);
     const first = await call("POST", "/admin/participants", [
       { name: "Анна", email: "ANNA@test.ru" },
       { name: "Без почты", email: "" },
@@ -179,6 +190,14 @@ test("полный сценарий: участники, пароли, два т
     );
     const missing = (await call("GET", "/admin/rounds/2/missing", undefined, admin)).body;
     assert.equal(missing.length, 4);
+
+    const auditResponse = await call("GET", "/admin/vote-audit", undefined, admin);
+    assert.equal(auditResponse.status, 200);
+    assert.equal(auditResponse.body.ballots.length, 6);
+    const annaAudit = auditResponse.body.ballots.filter((entry) => entry.voter.name === "Анна");
+    assert.deepEqual(annaAudit.map((entry) => entry.round), [1, 2]);
+    assert.equal(annaAudit[0].choices.find((choice) => choice.nominationId === nom1).candidate, "Борис");
+    assert.equal(annaAudit[1].choices.find((choice) => choice.nominationId === nom2).candidate, "Анна");
   } finally {
     server.close();
   }

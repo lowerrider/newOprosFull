@@ -21,6 +21,8 @@ export const config = {
   jwtSecret: process.env.JWT_SECRET || "dev-secret",
   adminEmail: (process.env.ADMIN_EMAIL || "admin@example.com").toLowerCase(),
   adminPassword: process.env.ADMIN_PASSWORD || "admin",
+  regularAdminEmail: (process.env.REGULAR_ADMIN_EMAIL || "").toLowerCase(),
+  regularAdminPassword: process.env.REGULAR_ADMIN_PASSWORD || "",
   corsOrigin: (process.env.CORS_ORIGIN || "http://localhost:5173")
     .split(",")
     .map((s) => s.trim())
@@ -50,6 +52,17 @@ if (process.env.NODE_ENV === "production") {
     /^(admin|change-me|CHANGE_ME)/i.test(config.adminPassword)
   ) {
     throw new Error("Задайте уникальный ADMIN_PASSWORD длиной не менее 12 символов в .env");
+  }
+  if (config.regularAdminEmail || config.regularAdminPassword) {
+    if (!config.regularAdminEmail || config.regularAdminPassword.length < 12) {
+      throw new Error("Задайте REGULAR_ADMIN_EMAIL и REGULAR_ADMIN_PASSWORD длиной не менее 12 символов");
+    }
+    if (/^(admin|manager|change-me|CHANGE_ME)/i.test(config.regularAdminPassword)) {
+      throw new Error("Замените небезопасный REGULAR_ADMIN_PASSWORD в .env");
+    }
+    if (config.regularAdminEmail === config.adminEmail) {
+      throw new Error("ADMIN_EMAIL и REGULAR_ADMIN_EMAIL должны отличаться");
+    }
   }
 
   let appOrigin;

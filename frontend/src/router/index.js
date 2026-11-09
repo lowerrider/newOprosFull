@@ -14,7 +14,7 @@ const routes = [
     path: "/admin",
     name: "admin",
     component: () => import("@/views/admin/AdminView.vue"),
-    meta: { role: "admin" },
+    meta: { roles: ["admin", "superadmin"] },
   },
   // Старые ссылки
   { path: "/questions", redirect: "/vote" },
@@ -29,4 +29,5 @@ export const router = createRouter({
 
 router.beforeEach((to) => {
   if (to.meta.role && session.role !== to.meta.role) return { name: "home" };
+  if (to.meta.roles && !to.meta.roles.includes(session.role)) return { name: "home" };
 });

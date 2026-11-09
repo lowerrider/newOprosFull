@@ -29,7 +29,7 @@ import deer from "@/assets/illustrations/deer.svg";
 const router = useRouter();
 const showLogin = ref(false);
 
-const routeFor = (role) => (role === "admin" ? "/admin" : "/vote");
+const routeFor = (role) => (["admin", "superadmin"].includes(role) ? "/admin" : "/vote");
 
 // Если уже вошли в этой вкладке, сразу переходим к голосованию
 const start = () => {

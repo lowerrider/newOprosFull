@@ -42,9 +42,11 @@ chown -R "$APP_USER:$APP_USER" "$APP_DIR"
 
 ENV_FILE="$APP_DIR/backend/.env"
 ADMIN_PASSWORD_NEW=""
+REGULAR_ADMIN_PASSWORD_NEW=""
 if [ ! -f "$ENV_FILE" ]; then
   step "Создаю $ENV_FILE с новыми секретами"
   ADMIN_PASSWORD_NEW="$(openssl rand -base64 12 | tr -d '/+=')"
+  REGULAR_ADMIN_PASSWORD_NEW="$(openssl rand -base64 12 | tr -d '/+=')"
   cat > "$ENV_FILE" <<ENV
 NODE_ENV=production
 PORT=3000
@@ -53,6 +55,8 @@ DB_PATH=./data/opros.db
 JWT_SECRET=$(openssl rand -hex 32)
 ADMIN_EMAIL=admin@mega-personal.ru
 ADMIN_PASSWORD=$ADMIN_PASSWORD_NEW
+REGULAR_ADMIN_EMAIL=manager@mega-personal.ru
+REGULAR_ADMIN_PASSWORD=$REGULAR_ADMIN_PASSWORD_NEW
 CORS_ORIGIN=http://$SITE,https://$SITE
 APP_URL=http://$SITE/
 SMTP_HOST=mail.mega-personal.ru
@@ -132,6 +136,8 @@ echo " Админка:     http://$SITE/#/admin"
 if [ -n "$ADMIN_PASSWORD_NEW" ]; then
   echo " Логин админа:  admin@mega-personal.ru"
   echo " Пароль админа: $ADMIN_PASSWORD_NEW   (сохраните его!)"
+  echo " Обычный админ:   manager@mega-personal.ru"
+  echo " Его пароль:      $REGULAR_ADMIN_PASSWORD_NEW   (сохраните его!)"
 fi
 echo " Чтобы работала рассылка, впишите SMTP_PASS:"
 echo "   nano $ENV_FILE   и затем   systemctl restart opros"
