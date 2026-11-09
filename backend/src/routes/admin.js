@@ -106,6 +106,19 @@ export function adminRoutes(db, config, mailer) {
     res.json({ ok: true });
   });
 
+  router.delete("/participants", (req, res) => {
+    if (req.body?.confirmation !== "DELETE_ALL") {
+      throw new HttpError(400, "Подтвердите удаление всех участников");
+    }
+    const deleted = db.prepare("SELECT COUNT(*) AS count FROM participants").get().count;
+    db.transaction(() => {
+      // Связанные бюллетени, голоса и составы кандидатов удалятся по внешним ключам.
+      db.prepare("DELETE FROM participants").run();
+      db.prepare("UPDATE rounds SET status = 'draft'").run();
+    })();
+    res.json({ deleted });
+  });
+
   router.delete("/participants/:id", (req, res) => {
     db.prepare("DELETE FROM participants WHERE id = ?").run(req.params.id);
     res.json({ ok: true });

@@ -99,14 +99,18 @@
         </ul>
 
         <div class="password-tools">
-          <h3>Сгенерировать пароли всем</h3>
+          <h3>Сгенерировать недостающие пароли</h3>
           <p class="muted">
-            Создаст новые пароли сразу для всех участников с email. Старые пароли перестанут
-            работать. Результат можно скачать одним CSV-файлом.
+            Создаст пароль только участникам с email, у которых пароля ещё нет. Уже выданные
+            пароли останутся рабочими. Результат можно скачать одним CSV-файлом.
           </p>
           <div class="row">
-            <button type="button" class="secondary" :disabled="generating || !participants.length" @click="regenerateAll">
-              {{ generating ? "Генерация…" : `Сгенерировать всем (${participants.length - withoutEmailCount})` }}
+            <button
+              type="button"
+              class="secondary"
+              :disabled="generating || !missingPasswordCount"
+              @click="generate({ onlyMissing: true })">
+              {{ generating ? "Генерация…" : `Сгенерировать без пароля (${missingPasswordCount})` }}
             </button>
             <button v-if="credentials.length" type="button" @click="downloadCredentials">
               Скачать CSV ({{ credentials.length }})
@@ -114,6 +118,23 @@
           </div>
         </div>
       </div>
+    </div>
+
+    <div class="card danger-zone">
+      <div>
+        <h2>Удалить всех участников</h2>
+        <p class="muted">
+          Удалит участников, их пароли, голоса и составы кандидатов. Номинации останутся,
+          статусы туров вернутся в «не начат».
+        </p>
+      </div>
+      <button
+        type="button"
+        class="danger"
+        :disabled="deletingAll || !participants.length"
+        @click="deleteAllParticipants">
+        {{ deletingAll ? "Удаляю…" : `Удалить всех (${participants.length})` }}
+      </button>
     </div>
 
     <div class="card">
@@ -223,9 +244,13 @@ const excelFileName = ref("");
 const excelLoading = ref(false);
 const excelImporting = ref(false);
 const importResult = ref("");
+const deletingAll = ref(false);
 
 const withPassword = computed(() => participants.value.filter((p) => p.hasPassword).length);
 const withoutEmailCount = computed(() => participants.value.filter((p) => !p.email).length);
+const missingPasswordCount = computed(
+  () => participants.value.filter((p) => p.email && !p.hasPassword).length
+);
 const sentCount = computed(
   () => participants.value.filter((p) => p.email && p.credentialsSentAt).length
 );
@@ -330,12 +355,6 @@ const generate = async (options) => {
   generating.value = false;
 };
 
-const regenerateAll = () => {
-  if (confirm("Старые пароли перестанут работать у всех участников. Продолжить?")) {
-    generate({ onlyMissing: false });
-  }
-};
-
 const downloadCredentials = () =>
   downloadCsv("passwords.csv", [
     ["ФИО", "Email", "Пароль"],
@@ -372,6 +391,23 @@ const remove = (p) => {
   if (confirm(`Удалить участника «${p.name}»? Его голоса тоже удалятся.`)) {
     run(() => api.delete(`/admin/participants/${p.id}`));
   }
+};
+
+const deleteAllParticipants = async () => {
+  const confirmed = confirm(
+    `Удалить всех участников (${participants.value.length}) вместе с их голосами и паролями?`
+  );
+  if (!confirmed) return;
+  const phrase = prompt("Это действие нельзя отменить. Введите УДАЛИТЬ заглавными буквами:");
+  if (phrase !== "УДАЛИТЬ") {
+    if (phrase !== null) error.value = "Удаление отменено: контрольное слово введено неверно";
+    return;
+  }
+  deletingAll.value = true;
+  credentials.value = [];
+  mailResult.value = null;
+  await run(() => api.delete("/admin/participants", { data: { confirmation: "DELETE_ALL" } }));
+  deletingAll.value = false;
 };
 
 onMounted(async () => {
@@ -486,6 +522,19 @@ onMounted(async () => {
   margin: 0 0 6px;
   font-size: 14px;
 }
+.danger-zone {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  border-color: #f2c7c9;
+}
+.danger-zone h2 {
+  color: var(--danger);
+}
+.danger-zone p {
+  max-width: 680px;
+}
 .table-wrap {
   max-height: 520px;
   overflow: auto;
@@ -517,6 +566,10 @@ thead th {
 @media (max-width: 900px) {
   .two-cols {
     grid-template-columns: 1fr;
+  }
+  .danger-zone {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 </style>

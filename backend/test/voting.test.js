@@ -69,6 +69,19 @@ test("импорт участников повторяемый и проверя
     const participants = (await call("GET", "/admin/participants", undefined, admin)).body;
     assert.equal(participants.length, 2);
     assert.equal(participants.find((p) => p.email)?.name, "Анна Новая");
+
+    assert.equal(
+      (await call("DELETE", "/admin/participants", { confirmation: "wrong" }, regularLogin.body.token)).status,
+      400
+    );
+    const deleted = await call(
+      "DELETE",
+      "/admin/participants",
+      { confirmation: "DELETE_ALL" },
+      regularLogin.body.token
+    );
+    assert.deepEqual(deleted.body, { deleted: 2 });
+    assert.equal((await call("GET", "/admin/participants", undefined, admin)).body.length, 0);
   } finally {
     server.close();
   }
