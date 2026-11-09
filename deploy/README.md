@@ -78,3 +78,17 @@ systemctl start opros
    ```
 3. В `/opt/opros/backend/.env` поменяйте `APP_URL=https://vote.example.ru/` (эта ссылка
    уходит в письмах) и выполните `systemctl restart opros`.
+
+Для текущего домена с одновременной поддержкой адресов без `www` и с `www` используйте
+готовый безопасный скрипт. Перед изменениями он сохраняет `.env`, nginx-конфиг и базу:
+
+```sh
+bash /opt/opros/deploy/configure-domain.sh www.mega-vote.ru
+```
+
+Скрипт не меняет `JWT_SECRET`, пароль администратора и SMTP-пароль. Он задаёт
+`APP_URL=https://www.mega-vote.ru/`, разрешает оба origin и получает сертификат сразу
+для `mega-vote.ru` и `www.mega-vote.ru`.
+
+Production-шаблон всех переменных находится в `backend/.env.production.example`.
+Настоящий `.env` и база данных игнорируются Git и должны сохраняться резервными копиями.

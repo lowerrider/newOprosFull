@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { isIP } from "node:net";
 import path from "node:path";
 
 // Простая загрузка .env без зависимостей
@@ -38,10 +39,33 @@ export const config = {
 };
 
 if (process.env.NODE_ENV === "production") {
-  if (config.jwtSecret === "dev-secret" || config.jwtSecret === "change-me") {
-    throw new Error("Задайте JWT_SECRET в .env");
+  if (
+    config.jwtSecret.length < 32 ||
+    /^(dev-secret|change-me|CHANGE_ME)/i.test(config.jwtSecret)
+  ) {
+    throw new Error("Задайте уникальный JWT_SECRET длиной не менее 32 символов в .env");
   }
-  if (config.adminPassword === "admin" || config.adminPassword === "change-me") {
-    throw new Error("Задайте ADMIN_PASSWORD в .env");
+  if (
+    config.adminPassword.length < 12 ||
+    /^(admin|change-me|CHANGE_ME)/i.test(config.adminPassword)
+  ) {
+    throw new Error("Задайте уникальный ADMIN_PASSWORD длиной не менее 12 символов в .env");
+  }
+
+  let appOrigin;
+  try {
+    const appUrl = new URL(config.appUrl);
+    // Первый setup допускает временный запуск по IP до подключения домена/certbot.
+    if (appUrl.protocol !== "https:" && !isIP(appUrl.hostname)) throw new Error();
+    appOrigin = appUrl.origin;
+  } catch {
+    throw new Error("APP_URL в production должен быть полным HTTPS-адресом");
+  }
+  if (!config.corsOrigin.includes(appOrigin)) {
+    throw new Error("CORS_ORIGIN должен содержать origin из APP_URL");
+  }
+
+  if (config.smtp.pass && (!config.smtp.host || !config.smtp.user)) {
+    throw new Error("Для SMTP_PASS также заполните SMTP_HOST и SMTP_USER");
   }
 }
