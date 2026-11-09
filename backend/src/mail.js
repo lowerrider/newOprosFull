@@ -7,6 +7,31 @@ const escapeHtml = (value) =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 
+export function buildCredentialsMessage({ name, email, password, url }) {
+  return {
+    subject: "Первый этап новогоднего голосования Mega-Personal 2026: Ваш доступ",
+    text: [
+      `${name}, здравствуйте!`,
+      "",
+      "Приглашаем Вас принять участие в Первом этапе новогоднего голосования, который пройдет с 11 по 17 ноября 2026.",
+      "",
+      url,
+      `Логин: ${email}`,
+      `Пароль: ${password}`,
+      "",
+      "Голосование проходит в два тура, в каждом туре можно проголосовать один раз.",
+    ].join("\n"),
+    html: `
+      <p>${escapeHtml(name)}, здравствуйте!</p>
+      <p>Приглашаем Вас принять участие в Первом этапе новогоднего голосования, который пройдет с 11 по 17 ноября 2026.</p>
+      <p><a href="${escapeHtml(url)}">${escapeHtml(url)}</a></p>
+      <p><strong>Логин:</strong> ${escapeHtml(email)}<br />
+         <strong>Пароль:</strong> ${escapeHtml(password)}</p>
+      <p>Голосование проходит в два тура, в каждом туре можно проголосовать один раз.</p>
+    `,
+  };
+}
+
 // Возвращает { configured, sendCredentials } . Без SMTP_HOST/USER/PASS рассылка выключена.
 export function createMailer(config) {
   const { host, port, secure, user, pass, from } = config.smtp;
@@ -25,29 +50,11 @@ export function createMailer(config) {
     configured: true,
     async sendCredentials({ name, email, password }) {
       const url = config.appUrl;
+      const message = buildCredentialsMessage({ name, email, password, url });
       await transporter.sendMail({
         from: from || user,
         to: email,
-        subject: "Новогоднее голосование Mega-Personal: ваш доступ",
-        text: [
-          `${name}, здравствуйте!`,
-          "",
-          "Приглашаем вас принять участие в новогоднем голосовании.",
-          "",
-          `Ссылка: ${url}`,
-          `Логин: ${email}`,
-          `Пароль: ${password}`,
-          "",
-          "Голосование проходит в два тура, в каждом туре можно проголосовать один раз.",
-        ].join("\n"),
-        html: `
-          <p>${escapeHtml(name)}, здравствуйте!</p>
-          <p>Приглашаем вас принять участие в новогоднем голосовании.</p>
-          <p><a href="${escapeHtml(url)}">${escapeHtml(url)}</a></p>
-          <p><strong>Логин:</strong> ${escapeHtml(email)}<br />
-             <strong>Пароль:</strong> ${escapeHtml(password)}</p>
-          <p>Голосование проходит в два тура, в каждом туре можно проголосовать один раз.</p>
-        `,
+        ...message,
       });
     },
   };
