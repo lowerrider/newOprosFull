@@ -10,6 +10,16 @@ import {
   pickFinalists,
 } from "../voting.js";
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function participantEmail(value, name) {
+  const email = String(value || "").trim().toLowerCase();
+  if (email && !EMAIL_RE.test(email)) {
+    throw new HttpError(400, `Некорректный email у участника «${name}»`);
+  }
+  return email || null;
+}
+
 export function adminRoutes(db, config, mailer) {
   const router = Router();
   router.use(requireRole("admin", config.jwtSecret));
@@ -39,32 +49,56 @@ export function adminRoutes(db, config, mailer) {
     );
   });
 
-  // Добавление списком: [{ name, email }]. Существующие по email обновляют имя.
+  // Добавление списком: [{ name, email }]. Повторный импорт не создаёт дубли.
   router.post("/participants", (req, res) => {
     const list = Array.isArray(req.body) ? req.body : [req.body];
-    const upsert = db.prepare(
-      `INSERT INTO participants (name, email) VALUES (@name, @email)
-       ON CONFLICT(email) DO UPDATE SET name = excluded.name`
+    const findByEmail = db.prepare("SELECT id FROM participants WHERE email = ? COLLATE NOCASE");
+    const findNoEmailByName = db.prepare(
+      "SELECT id FROM participants WHERE email IS NULL AND name = ? LIMIT 1"
     );
-    const insertNoEmail = db.prepare("INSERT INTO participants (name) VALUES (?)");
+    const insert = db.prepare("INSERT INTO participants (name, email) VALUES (?, ?)");
+    const updateName = db.prepare("UPDATE participants SET name = ? WHERE id = ?");
+    const attachEmail = db.prepare("UPDATE participants SET name = ?, email = ? WHERE id = ?");
     let added = 0;
+    let updated = 0;
+    let skipped = 0;
     db.transaction(() => {
       for (const item of list) {
         const name = String(item?.name || item?.title || "").trim();
-        const email = String(item?.email || "").trim().toLowerCase() || null;
         if (!name) continue;
-        if (email) upsert.run({ name, email });
-        else insertNoEmail.run(name);
-        added++;
+        const email = participantEmail(item?.email, name);
+        if (email) {
+          const byEmail = findByEmail.get(email);
+          if (byEmail) {
+            updateName.run(name, byEmail.id);
+            updated++;
+            continue;
+          }
+          const withoutEmail = findNoEmailByName.get(name);
+          if (withoutEmail) {
+            attachEmail.run(name, email, withoutEmail.id);
+            updated++;
+            continue;
+          }
+          insert.run(name, email);
+          added++;
+          continue;
+        }
+        if (findNoEmailByName.get(name)) {
+          skipped++;
+        } else {
+          insert.run(name, null);
+          added++;
+        }
       }
     })();
-    res.status(201).json({ added });
+    res.status(201).json({ added, updated, skipped });
   });
 
   router.put("/participants/:id", (req, res) => {
     const name = String(req.body?.name || "").trim();
-    const email = String(req.body?.email || "").trim().toLowerCase() || null;
     if (!name) throw new HttpError(400, "Укажите ФИО");
+    const email = participantEmail(req.body?.email, name);
     const info = db
       .prepare("UPDATE participants SET name = ?, email = ? WHERE id = ?")
       .run(name, email, req.params.id);

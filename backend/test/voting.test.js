@@ -30,6 +30,39 @@ async function startServer() {
   return { server, call };
 }
 
+test("импорт участников повторяемый и проверяет email", async () => {
+  const { server, call } = await startServer();
+  try {
+    const admin = (await call("POST", "/auth/login", { email: "admin@test", password: "adminpass" })).body.token;
+    const first = await call("POST", "/admin/participants", [
+      { name: "Анна", email: "ANNA@test.ru" },
+      { name: "Без почты", email: "" },
+    ], admin);
+    assert.equal(first.status, 201);
+    assert.deepEqual(first.body, { added: 2, updated: 0, skipped: 0 });
+
+    const repeated = await call("POST", "/admin/participants", [
+      { name: "Анна Новая", email: "anna@test.ru" },
+      { name: "Без почты" },
+    ], admin);
+    assert.deepEqual(repeated.body, { added: 0, updated: 1, skipped: 1 });
+
+    const invalid = await call(
+      "POST",
+      "/admin/participants",
+      { name: "Ошибка", email: "not-an-email" },
+      admin
+    );
+    assert.equal(invalid.status, 400);
+
+    const participants = (await call("GET", "/admin/participants", undefined, admin)).body;
+    assert.equal(participants.length, 2);
+    assert.equal(participants.find((p) => p.email)?.name, "Анна Новая");
+  } finally {
+    server.close();
+  }
+});
+
 test("pickFinalists: топ-3 и ничья на 3-м месте", () => {
   const rows = [
     { id: 1, votes: 5 },

@@ -8,7 +8,10 @@
       <div class="stats">
         <div class="stat"><b>{{ participants.length }}</b><span>всего</span></div>
         <div class="stat"><b>{{ withPassword }}</b><span>с паролем</span></div>
-        <div class="stat"><b>{{ participants.length - notSentCount }}</b><span>получили письмо</span></div>
+        <div class="stat"><b>{{ sentCount }}</b><span>получили письмо</span></div>
+        <div class="stat" :class="{ 'stat-warning': withoutEmailCount }">
+          <b>{{ withoutEmailCount }}</b><span>без email</span>
+        </div>
       </div>
     </div>
 
@@ -21,6 +24,44 @@
           По одному на строку: <code>ФИО; email</code>. Можно вставить из Excel (два столбца).
           Если email уже есть, у участника обновится ФИО.
         </p>
+        <div class="excel-import">
+          <label for="participants-xlsx" class="file-label">Импорт из Excel (.xlsx)</label>
+          <input
+            id="participants-xlsx"
+            ref="fileInput"
+            type="file"
+            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            aria-describedby="xlsx-help"
+            @change="readExcel"
+          />
+          <p id="xlsx-help" class="muted">
+            Нужны столбцы <strong>ФИО</strong> и <strong>email</strong>. Пустые и некорректные
+            адреса загрузятся без email и будут отмечены в списке.
+          </p>
+          <p v-if="excelLoading" class="muted" role="status">Читаю файл…</p>
+          <div v-if="excelReport" class="excel-preview" role="status">
+            <p>
+              <strong>{{ excelFileName }}</strong>: подготовлено {{ excelParticipants.length }},
+              с email — {{ excelReport.withEmail }}, без email — {{ excelReport.withoutEmail }}.
+              <span v-if="excelReport.duplicateCount">
+                Дублей пропущено: {{ excelReport.duplicateCount }}.
+              </span>
+            </p>
+            <details v-if="excelReport.invalidEmails.length" class="email-issues">
+              <summary>Некорректные адреса: {{ excelReport.invalidEmails.length }}</summary>
+              <ul>
+                <li v-for="item in excelReport.invalidEmails" :key="`${item.name}-${item.email}`">
+                  {{ item.name }} — <code>{{ item.email }}</code>
+                </li>
+              </ul>
+            </details>
+            <button type="button" :disabled="excelImporting" @click="addExcelParticipants">
+              {{ excelImporting ? "Загрузка…" : `Добавить из Excel (${excelParticipants.length})` }}
+            </button>
+          </div>
+          <p v-if="importResult" class="ok import-result">{{ importResult }}</p>
+        </div>
+        <div class="manual-divider"><span>или вставить вручную</span></div>
         <textarea v-model="bulkText" placeholder="Иванов Иван Иванович; ivanov@mega-personal.ru"></textarea>
         <div class="row" style="margin: 10px 0 0">
           <button type="button" :disabled="!parsedBulk.length" @click="addBulk">
@@ -58,7 +99,7 @@
         </ul>
 
         <details class="manual">
-          <summary>Без почты: сгенерировать пароли и скачать CSV</summary>
+          <summary>Если рассылка недоступна: сгенерировать пароли и скачать CSV</summary>
           <p class="muted">
             Открытые пароли видны один раз, сразу после генерации: в базе хранятся только хеши.
           </p>
@@ -88,7 +129,7 @@
             <tr><th>ФИО</th><th>Email</th><th>Пароль</th><th>Письмо</th><th></th></tr>
           </thead>
           <tbody>
-            <tr v-for="p in filtered" :key="p.id">
+            <tr v-for="p in filtered" :key="p.id" :class="{ 'missing-email-row': !p.email }">
               <template v-if="editingId === p.id">
                 <td><input v-model="editForm.name" style="width: 100%" /></td>
                 <td><input v-model="editForm.email" style="width: 100%" /></td>
@@ -101,7 +142,13 @@
               </template>
               <template v-else>
                 <td>{{ p.name }}</td>
-                <td>{{ p.email || "—" }}</td>
+                <td>
+                  <span v-if="p.email">{{ p.email }}</span>
+                  <span v-else class="missing-email">
+                    <strong>Нет email</strong>
+                    <small>не получит письмо и не сможет войти</small>
+                  </span>
+                </td>
                 <td>
                   <span class="badge" :class="{ closed: p.hasPassword }">{{ p.hasPassword ? "есть" : "нет" }}</span>
                 </td>
@@ -157,6 +204,7 @@
 import { ref, computed, onMounted } from "vue";
 import { api, errorText } from "@/api";
 import { downloadCsv } from "@/utils/csv";
+import { parseParticipantsXlsx } from "@/utils/xlsx";
 import { state, reload } from "@/stores/admin";
 
 const participants = computed(() => state.participants);
@@ -170,8 +218,19 @@ const mailConfigured = ref(null);
 const sending = ref(false);
 const generating = ref(false);
 const mailResult = ref(null);
+const fileInput = ref(null);
+const excelParticipants = ref([]);
+const excelReport = ref(null);
+const excelFileName = ref("");
+const excelLoading = ref(false);
+const excelImporting = ref(false);
+const importResult = ref("");
 
 const withPassword = computed(() => participants.value.filter((p) => p.hasPassword).length);
+const withoutEmailCount = computed(() => participants.value.filter((p) => !p.email).length);
+const sentCount = computed(
+  () => participants.value.filter((p) => p.email && p.credentialsSentAt).length
+);
 const notSentCount = computed(
   () => participants.value.filter((p) => p.email && !p.credentialsSentAt).length
 );
@@ -224,6 +283,46 @@ const addBulk = () =>
     await api.post("/admin/participants", parsedBulk.value);
     bulkText.value = "";
   });
+
+const resetExcel = () => {
+  excelParticipants.value = [];
+  excelReport.value = null;
+  excelFileName.value = "";
+  if (fileInput.value) fileInput.value.value = "";
+};
+
+const readExcel = async (event) => {
+  const file = event.target.files?.[0];
+  error.value = "";
+  importResult.value = "";
+  resetExcel();
+  if (!file) return;
+  excelLoading.value = true;
+  try {
+    const parsed = await parseParticipantsXlsx(file);
+    excelParticipants.value = parsed.participants;
+    excelReport.value = parsed.report;
+    excelFileName.value = file.name;
+  } catch (e) {
+    error.value = e.message || "Не удалось прочитать Excel-файл";
+  } finally {
+    excelLoading.value = false;
+  }
+};
+
+const addExcelParticipants = async () => {
+  excelImporting.value = true;
+  importResult.value = "";
+  await run(async () => {
+    const { data } = await api.post("/admin/participants", excelParticipants.value);
+    const parts = [`добавлено ${data.added}`];
+    if (data.updated) parts.push(`обновлено ${data.updated}`);
+    if (data.skipped) parts.push(`без изменений ${data.skipped}`);
+    importResult.value = `Excel загружен: ${parts.join(", ")}.`;
+    resetExcel();
+  });
+  excelImporting.value = false;
+};
 
 const generate = async (options) => {
   generating.value = true;
@@ -308,10 +407,77 @@ onMounted(async () => {
   color: var(--muted);
   font-size: 12px;
 }
+.stat-warning {
+  background: var(--danger-soft);
+  border-color: #f2c7c9;
+}
+.stat-warning b,
+.stat-warning span {
+  color: var(--danger);
+}
 .two-cols {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
+}
+.excel-import {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fafafe;
+}
+.file-label {
+  display: block;
+  margin-bottom: 7px;
+  font-weight: 600;
+}
+.excel-import input[type="file"] {
+  width: 100%;
+  margin-bottom: 8px;
+}
+.excel-preview {
+  margin-top: 10px;
+  padding: 12px;
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: 7px;
+}
+.excel-preview p {
+  margin-bottom: 10px;
+  line-height: 1.45;
+}
+.email-issues {
+  margin-bottom: 10px;
+  color: var(--danger);
+}
+.email-issues summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.email-issues ul {
+  max-height: 130px;
+  overflow: auto;
+  margin: 8px 0 0;
+  padding-left: 20px;
+}
+.import-result {
+  margin-top: 10px;
+}
+.manual-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.manual-divider::before,
+.manual-divider::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: var(--line);
 }
 .manual {
   margin-top: 16px;
@@ -335,6 +501,21 @@ thead th {
 .actions {
   white-space: nowrap;
   text-align: right;
+}
+.missing-email-row {
+  background: var(--danger-soft);
+}
+.missing-email-row:hover {
+  background: #f9dddd;
+}
+.missing-email {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--danger);
+}
+.missing-email small {
+  font-size: 11px;
 }
 @media (max-width: 900px) {
   .two-cols {
