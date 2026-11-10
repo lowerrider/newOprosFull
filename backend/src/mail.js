@@ -32,6 +32,24 @@ export function buildCredentialsMessage({ name, email, password, url }) {
   };
 }
 
+export function buildRoundTwoMessage({ name, url }) {
+  return {
+    subject: "Второй этап новогоднего голосования Mega-Personal 2026: Ваш доступ",
+    text: [
+      `${name}, здравствуйте!`,
+      "",
+      "Приглашаем Вас принять участие в Финальном туре новогоднего голосования, который пройдет с 24 по 30 ноября 2026.",
+      "",
+      url,
+    ].join("\n"),
+    html: `
+      <p>${escapeHtml(name)}, здравствуйте!</p>
+      <p>Приглашаем Вас принять участие в Финальном туре новогоднего голосования, который пройдет с 24 по 30 ноября 2026.</p>
+      <p><a href="${escapeHtml(url)}">${escapeHtml(url)}</a></p>
+    `,
+  };
+}
+
 // Возвращает { configured, sendCredentials } . Без SMTP_HOST/USER/PASS рассылка выключена.
 export function createMailer(config) {
   const { host, port, secure, user, pass, from } = config.smtp;
@@ -51,6 +69,15 @@ export function createMailer(config) {
     async sendCredentials({ name, email, password }) {
       const url = config.appUrl;
       const message = buildCredentialsMessage({ name, email, password, url });
+      await transporter.sendMail({
+        from: from || user,
+        to: email,
+        ...message,
+      });
+    },
+    async sendRoundTwoNotice({ name, email }) {
+      const url = config.appUrl;
+      const message = buildRoundTwoMessage({ name, url });
       await transporter.sendMail({
         from: from || user,
         to: email,

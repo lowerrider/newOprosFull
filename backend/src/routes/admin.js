@@ -324,6 +324,40 @@ export function adminRoutes(db, config, mailer) {
     res.json({ ok: true });
   });
 
+  // Ручное уведомление о начале 2 этапа. Пароли участников не меняются.
+  router.post("/rounds/2/send-notice", async (req, res) => {
+    if (!mailer.configured) {
+      throw new HttpError(503, "Почта не настроена: заполните SMTP_* в .env бекенда");
+    }
+    if (getRound(db, 2).status !== "open") {
+      throw new HttpError(409, "Сначала откройте второй тур");
+    }
+
+    const rows = db
+      .prepare(
+        `SELECT id, name, email FROM participants
+         WHERE email IS NOT NULL ORDER BY name`
+      )
+      .all();
+    const sent = [];
+    const failed = [];
+
+    for (const participant of rows) {
+      try {
+        await mailer.sendRoundTwoNotice({
+          name: participant.name,
+          email: participant.email,
+        });
+        sent.push(participant.email);
+      } catch (error) {
+        console.error(`Не удалось отправить письмо 2 этапа ${participant.email}:`, error.message);
+        failed.push({ email: participant.email, error: error.message });
+      }
+    }
+
+    res.json({ sent, failed });
+  });
+
   router.get("/rounds/:round/results", (req, res) => {
     res.json(results(db, roundParam(req)));
   });

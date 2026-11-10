@@ -106,6 +106,31 @@
 
     <!-- ===== Идёт или завершено ===== -->
     <template v-else-if="results">
+      <div v-if="round === 2 && status === 'open'" class="card mailing-card">
+        <div class="mailing-copy">
+          <b>Рассылка второго этапа</b>
+          <div class="muted">
+            Уведомляет всех участников с email о начале финального тура. Логины и пароли не меняются.
+          </div>
+        </div>
+        <button type="button" :disabled="sendingRoundTwo" @click="sendRoundTwoNotice">
+          {{ sendingRoundTwo ? "Отправляю…" : "Разослать уведомление о 2 этапе" }}
+        </button>
+        <p
+          v-if="roundTwoMailResult"
+          class="mailing-result"
+          :class="roundTwoMailResult.failed.length ? 'error' : 'ok'"
+          role="status">
+          Отправлено: {{ roundTwoMailResult.sent.length }}<span v-if="roundTwoMailResult.failed.length">,
+          не удалось: {{ roundTwoMailResult.failed.length }}</span>
+        </p>
+        <ul v-if="roundTwoMailResult?.failed.length" class="mailing-errors muted">
+          <li v-for="failure in roundTwoMailResult.failed" :key="failure.email">
+            {{ failure.email }}: {{ failure.error }}
+          </li>
+        </ul>
+      </div>
+
       <div class="card progress-card">
         <div class="progress-top">
           <div>
@@ -179,6 +204,8 @@ const savedId = ref(null);
 const results = ref(null);
 const missing = ref(null);
 const showAll = reactive({});
+const sendingRoundTwo = ref(false);
+const roundTwoMailResult = ref(null);
 // Черновик номинантов по номинациям, сохранённый вариант — в state.nominations
 const draft = reactive({});
 
@@ -296,6 +323,25 @@ const closeRound = () => {
       await api.post(`/admin/rounds/${props.round}/close`);
       await loadResults();
     });
+  }
+};
+
+const sendRoundTwoNotice = async () => {
+  const confirmed = confirm(
+    "Отправить всем участникам с email уведомление о начале второго этапа?"
+  );
+  if (!confirmed) return;
+
+  sendingRoundTwo.value = true;
+  roundTwoMailResult.value = null;
+  error.value = "";
+  try {
+    roundTwoMailResult.value = (await api.post("/admin/rounds/2/send-notice")).data;
+    await reload();
+  } catch (e) {
+    error.value = errorText(e);
+  } finally {
+    sendingRoundTwo.value = false;
   }
 };
 
@@ -434,6 +480,27 @@ watch(status, loadResults);
   flex-wrap: wrap;
   margin-bottom: 14px;
 }
+.mailing-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px 20px;
+  align-items: center;
+  border-color: #d9d3ff;
+  background: var(--accent-soft);
+}
+.mailing-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.mailing-result,
+.mailing-errors {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+.mailing-errors {
+  padding-left: 18px;
+}
 .big-number {
   font-size: 30px;
   font-weight: 800;
@@ -509,9 +576,13 @@ watch(status, loadResults);
 }
 @media (max-width: 760px) {
   .toolbar-card,
-  .danger-zone {
+  .danger-zone,
+  .mailing-card {
     flex-direction: column;
     align-items: stretch;
+  }
+  .mailing-card {
+    display: flex;
   }
   .results-grid {
     grid-template-columns: 1fr;
