@@ -17,14 +17,23 @@
         :round="round"
         :current="index"
         :total="nominations.length"
+        :labels="nominations.map((n) => n.title)"
         :answered="nominations.map((n) => choices[n.id] != null)"
-        @go="index = $event" />
+        @go="goTo" />
 
       <Transition :name="direction" mode="out-in">
-        <NominationStep :key="current.id" :nomination="current" v-model="choices[current.id]" />
+        <NominationStep
+          :key="current.id"
+          :nomination="current"
+          :modelValue="choices[current.id]"
+          @update:modelValue="setChoice" />
       </Transition>
 
-      <p class="error" role="alert">{{ message }}</p>
+      <div class="feedback-slot" aria-live="polite">
+        <p v-if="message" class="feedback" :class="feedbackType" :role="feedbackType === 'error' ? 'alert' : 'status'">
+          {{ message }}
+        </p>
+      </div>
 
       <div class="actions">
         <PillButton variant="light" :disabled="index === 0" @click="go(-1)">Предыдущий вопрос</PillButton>
@@ -44,7 +53,9 @@
           <button type="button" class="link" @click="edit(i)">изменить</button>
         </li>
       </ul>
-      <p class="error" role="alert">{{ message }}</p>
+      <div class="feedback-slot" aria-live="polite">
+        <p v-if="message" class="feedback error" role="alert">{{ message }}</p>
+      </div>
       <div class="actions">
         <PillButton variant="light" @click="edit(nominations.length - 1)">Назад</PillButton>
         <PillButton :disabled="sending" @click="submit">
@@ -57,7 +68,7 @@
     <template v-else>
       <h1 class="headline">{{ final.title }}</h1>
       <p class="lead">{{ final.text }}</p>
-      <p v-if="message" class="error" role="alert">{{ message }}</p>
+      <p v-if="message" class="feedback error" role="alert">{{ message }}</p>
     </template>
   </FestiveLayout>
 </template>
@@ -72,6 +83,7 @@ import PineStar from "@/components/decor/PineStar.vue";
 import PillButton from "@/components/ui/PillButton.vue";
 import NominationStep from "@/components/vote/NominationStep.vue";
 import VoteProgress from "@/components/vote/VoteProgress.vue";
+import { firstUnansweredIndex, unansweredCount } from "@/utils/voteFlow";
 import car from "@/assets/illustrations/car.svg";
 import deer from "@/assets/illustrations/deer.svg";
 
@@ -85,6 +97,7 @@ const choices = ref({});
 const index = ref(0);
 const direction = ref("forward");
 const message = ref("");
+const feedbackType = ref("info");
 const sending = ref(false);
 
 const current = computed(() => nominations.value[index.value]);
@@ -125,24 +138,41 @@ const load = async () => {
     else state.value = "closed";
   } catch (e) {
     if (e.response?.status === 401) return logout();
+    feedbackType.value = "error";
     message.value = errorText(e);
     state.value = "closed";
   }
 };
 
-const go = (delta) => {
-  direction.value = delta > 0 ? "forward" : "back";
-  index.value += delta;
+const goTo = (target) => {
+  direction.value = target >= index.value ? "forward" : "back";
+  index.value = target;
   message.value = "";
 };
 
+const go = (delta) => goTo(index.value + delta);
+
+const setChoice = (value) => {
+  choices.value[current.value.id] = value;
+  if (feedbackType.value === "info") message.value = "";
+};
+
+const focusFirstUnanswered = () => {
+  const missingIndex = firstUnansweredIndex(nominations.value, choices.value);
+  if (missingIndex === -1) return false;
+
+  const remaining = unansweredCount(nominations.value, choices.value);
+  state.value = "voting";
+  direction.value = missingIndex >= index.value ? "forward" : "back";
+  index.value = missingIndex;
+  feedbackType.value = "info";
+  message.value = `Незаполненных номинаций: ${remaining}. В этой номинации выберите номинанта или «Пропустить номинацию».`;
+  return true;
+};
+
 const next = () => {
-  if (choices.value[current.value.id] == null) {
-    message.value = "Выберите номинанта или «Пропустить номинацию».";
-    return;
-  }
   if (index.value < nominations.value.length - 1) go(1);
-  else {
+  else if (!focusFirstUnanswered()) {
     message.value = "";
     state.value = "review";
   }
@@ -151,6 +181,7 @@ const next = () => {
 const edit = (i) => {
   direction.value = "back";
   index.value = i;
+  message.value = "";
   state.value = "voting";
 };
 
@@ -161,6 +192,8 @@ const choiceName = (n) => {
 };
 
 const submit = async () => {
+  if (focusFirstUnanswered()) return;
+
   sending.value = true;
   message.value = "";
   try {
@@ -171,6 +204,7 @@ const submit = async () => {
     state.value = "done";
   } catch (e) {
     if (e.response?.status === 409) state.value = "voted";
+    feedbackType.value = "error";
     message.value = errorText(e);
   } finally {
     sending.value = false;
@@ -191,11 +225,27 @@ onMounted(load);
   justify-content: center;
   margin-top: 8px;
 }
-.error {
-  min-height: 24px;
-  margin: 18px 0 14px;
-  color: var(--danger);
+.feedback-slot {
+  min-height: 70px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.feedback {
+  max-width: 680px;
+  margin: 14px 0;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 12px;
+  background: rgba(27, 35, 71, 0.78);
+  color: #fff;
   font-size: 15px;
+  line-height: 1.45;
+}
+.feedback.error {
+  border-color: rgba(255, 123, 123, 0.48);
+  background: rgba(91, 25, 38, 0.72);
+  color: #ffe7e7;
 }
 .headline {
   font-size: clamp(28px, 4vw, 52px);
