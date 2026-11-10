@@ -21,13 +21,15 @@
         :answered="nominations.map((n) => choices[n.id] != null)"
         @go="goTo" />
 
-      <Transition :name="direction" mode="out-in">
-        <NominationStep
-          :key="current.id"
-          :nomination="current"
-          :modelValue="choices[current.id]"
-          @update:modelValue="setChoice" />
-      </Transition>
+      <div class="question-stage">
+        <Transition :name="direction" mode="out-in">
+          <NominationStep
+            :key="current.id"
+            :nomination="current"
+            :modelValue="choices[current.id]"
+            @update:modelValue="setChoice" />
+        </Transition>
+      </div>
 
       <div class="feedback-slot" aria-live="polite">
         <p v-if="message" class="feedback" :class="feedbackType" :role="feedbackType === 'error' ? 'alert' : 'status'">
@@ -166,7 +168,7 @@ const focusFirstUnanswered = () => {
   direction.value = missingIndex >= index.value ? "forward" : "back";
   index.value = missingIndex;
   feedbackType.value = "info";
-  message.value = `Незаполненных номинаций: ${remaining}. В этой номинации выберите номинанта или «Пропустить номинацию».`;
+  message.value = `Выберите номинанта или «Пропустить номинацию». Осталось: ${remaining}.`;
   return true;
 };
 
@@ -218,22 +220,35 @@ onMounted(load);
 .progress {
   margin-bottom: clamp(28px, 5vh, 48px);
 }
+.question-stage {
+  width: 100%;
+  min-height: clamp(250px, 34vh, 320px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
 .actions {
   display: flex;
   gap: clamp(24px, 4vw, 40px);
   flex-wrap: wrap;
   justify-content: center;
-  margin-top: 8px;
+  margin-top: 0;
+}
+.actions :deep(.pill) {
+  min-width: 210px;
 }
 .feedback-slot {
-  min-height: 70px;
+  width: 100%;
+  height: 72px;
+  min-height: 72px;
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow-y: auto;
 }
 .feedback {
   max-width: 680px;
-  margin: 14px 0;
+  margin: 0;
   padding: 10px 14px;
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 12px;
@@ -370,6 +385,18 @@ onMounted(load);
   }
   .actions {
     gap: 22px;
+  }
+  .question-stage {
+    min-height: 260px;
+  }
+  .feedback-slot {
+    height: 88px;
+    min-height: 88px;
+  }
+}
+@media (max-width: 520px) {
+  .actions :deep(.pill) {
+    width: min(280px, calc(100vw - 48px));
   }
 }
 @media (prefers-reduced-motion: reduce) {

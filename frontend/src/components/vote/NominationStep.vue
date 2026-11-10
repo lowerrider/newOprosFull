@@ -1,7 +1,9 @@
 <template>
   <section class="step">
-    <h1 class="title">{{ nomination.title }}</h1>
-    <p v-if="nomination.subtitle" class="subtitle">{{ nomination.subtitle }}</p>
+    <div class="question-copy">
+      <h1 class="title">{{ nomination.title }}</h1>
+      <p v-if="nomination.subtitle" class="subtitle">{{ nomination.subtitle }}</p>
+    </div>
 
     <div class="picker">
       <label class="sr-only" :for="`nomination-${nomination.id}`">Выберите номинанта</label>
@@ -41,6 +43,14 @@ const options = computed(() => [
   flex-direction: column;
   align-items: center;
 }
+.question-copy {
+  width: 100%;
+  min-height: clamp(112px, 15vh, 148px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
 .title {
   font-size: clamp(30px, 4.4vw, 60px);
   font-weight: 800;
@@ -56,7 +66,7 @@ const options = computed(() => [
   color: var(--text-soft);
 }
 .picker {
-  margin-top: clamp(32px, 6vh, 64px);
+  margin-top: 24px;
   width: min(560px, calc(100vw - 32px));
 }
 .select {
