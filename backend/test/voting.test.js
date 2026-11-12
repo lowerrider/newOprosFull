@@ -70,6 +70,43 @@ test("импорт участников повторяемый и проверя
     assert.equal(participants.length, 2);
     assert.equal(participants.find((p) => p.email)?.name, "Анна Новая");
 
+    const anna = participants.find((p) => p.email);
+    const shortPassword = await call(
+      "PUT",
+      `/admin/participants/${anna.id}`,
+      { name: anna.name, email: anna.email, password: "short" },
+      admin
+    );
+    assert.equal(shortPassword.status, 400);
+
+    const changedPassword = await call(
+      "PUT",
+      `/admin/participants/${anna.id}`,
+      { name: anna.name, email: anna.email, password: "ManualPass42" },
+      admin
+    );
+    assert.deepEqual(changedPassword.body, { ok: true, passwordChanged: true });
+    assert.equal(
+      (await call("POST", "/auth/login", { email: anna.email, password: "ManualPass42" })).status,
+      200
+    );
+    const manuallyIssued = (await call("GET", "/admin/participants", undefined, admin)).body.find(
+      (participant) => participant.id === anna.id
+    );
+    assert.ok(manuallyIssued.credentialsSentAt);
+
+    const keptPassword = await call(
+      "PUT",
+      `/admin/participants/${anna.id}`,
+      { name: "Анна Вручную", email: anna.email, password: "" },
+      admin
+    );
+    assert.deepEqual(keptPassword.body, { ok: true, passwordChanged: false });
+    assert.equal(
+      (await call("POST", "/auth/login", { email: anna.email, password: "ManualPass42" })).status,
+      200
+    );
+
     assert.equal(
       (await call("DELETE", "/admin/participants", { confirmation: "wrong" }, regularLogin.body.token)).status,
       400

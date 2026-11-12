@@ -8,7 +8,7 @@
       <div class="stats">
         <div class="stat"><b>{{ participants.length }}</b><span>всего</span></div>
         <div class="stat"><b>{{ withPassword }}</b><span>с паролем</span></div>
-        <div class="stat"><b>{{ sentCount }}</b><span>получили письмо</span></div>
+        <div class="stat"><b>{{ sentCount }}</b><span>доступ выдан</span></div>
         <div class="stat" :class="{ 'stat-warning': withoutEmailCount }">
           <b>{{ withoutEmailCount }}</b><span>без email</span>
         </div>
@@ -84,13 +84,19 @@
             type="button"
             :disabled="!mailConfigured || sending || !notSentCount"
             @click="sendCredentials({ onlyNotSent: true })">
-            {{ sending ? "Отправка..." : `Разослать новым (${notSentCount})` }}
+            {{ sending ? `Отправка ${mailResult.processed}/${mailResult.total}` : `Разослать новым (${notSentCount})` }}
           </button>
           <button type="button" class="secondary" :disabled="!mailConfigured || sending" @click="resendAll">
             Всем заново
           </button>
         </div>
-        <p v-if="mailResult" :class="mailResult.failed.length ? 'error' : 'ok'" style="margin-bottom: 0">
+        <p v-if="mailJobError" class="alert error" role="alert">{{ mailJobError }}</p>
+        <p
+          v-if="mailResult"
+          :class="mailResult.status === 'done' && mailResult.failed.length ? 'error' : mailResult.status === 'done' ? 'ok' : 'muted'"
+          style="margin-bottom: 0"
+          role="status">
+          {{ mailResult.status === "running" ? `Обработано: ${mailResult.processed} из ${mailResult.total}. ` : "" }}
           Отправлено: {{ mailResult.sent.length }}<span v-if="mailResult.failed.length">,
           не удалось: {{ mailResult.failed.length }}</span>
         </p>
@@ -145,17 +151,45 @@
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>ФИО</th><th>Email</th><th>Пароль</th><th>Письмо</th><th></th></tr>
+            <tr><th>ФИО</th><th>Email</th><th>Пароль</th><th>Доступ</th><th></th></tr>
           </thead>
           <tbody>
             <tr v-for="p in filtered" :key="p.id" :class="{ 'missing-email-row': !p.email }">
               <template v-if="editingId === p.id">
-                <td><input v-model="editForm.name" style="width: 100%" /></td>
-                <td><input v-model="editForm.email" style="width: 100%" /></td>
-                <td></td>
+                <td><input v-model="editForm.name" aria-label="ФИО участника" style="width: 100%" /></td>
+                <td><input v-model="editForm.email" type="email" aria-label="Email участника" style="width: 100%" /></td>
+                <td>
+                  <div class="edit-password">
+                    <input
+                      v-model="editForm.password"
+                      :type="showEditPassword ? 'text' : 'password'"
+                      autocomplete="new-password"
+                      minlength="8"
+                      maxlength="64"
+                      aria-label="Новый пароль участника"
+                      placeholder="Новый пароль" />
+                    <button
+                      type="button"
+                      class="ghost password-visibility"
+                      :aria-label="showEditPassword ? 'Скрыть пароль' : 'Показать пароль'"
+                      :title="showEditPassword ? 'Скрыть пароль' : 'Показать пароль'"
+                      @click="showEditPassword = !showEditPassword">
+                      {{ showEditPassword ? "Скрыть" : "Показать" }}
+                    </button>
+                  </div>
+                  <small class="muted">
+                    Пусто — оставить прежний. Новый пароль: 8–64 символа; доступ отметится как
+                    выданный вручную.
+                  </small>
+                </td>
                 <td></td>
                 <td class="actions">
-                  <button type="button" @click="saveEdit(p.id)">Сохранить</button>
+                  <button
+                    type="button"
+                    :disabled="!editForm.name.trim() || (editForm.password && editForm.password.length < 8)"
+                    @click="saveEdit(p.id)">
+                    Сохранить
+                  </button>
                   <button type="button" class="ghost" @click="editingId = null">Отмена</button>
                 </td>
               </template>
@@ -222,6 +256,7 @@
 <script setup>
 import { ref, computed, onMounted } from "vue";
 import { api, errorText } from "@/api";
+import { useMailJob } from "@/composables/useMailJob";
 import { downloadCsv } from "@/utils/csv";
 import { parseParticipantsXlsx } from "@/utils/xlsx";
 import { state, reload } from "@/stores/admin";
@@ -232,11 +267,10 @@ const credentials = ref([]);
 const error = ref("");
 const search = ref("");
 const editingId = ref(null);
-const editForm = ref({ name: "", email: "" });
+const editForm = ref({ name: "", email: "", password: "" });
+const showEditPassword = ref(false);
 const mailConfigured = ref(null);
-const sending = ref(false);
 const generating = ref(false);
-const mailResult = ref(null);
 const fileInput = ref(null);
 const excelParticipants = ref([]);
 const excelReport = ref(null);
@@ -274,6 +308,14 @@ const load = async () => {
     error.value = errorText(e);
   }
 };
+
+const {
+  job: mailResult,
+  error: mailJobError,
+  running: sending,
+  start: startMailJob,
+  refresh: refreshMailJob,
+} = useMailJob("credentials", load);
 
 const parsedBulk = computed(() =>
   bulkText.value
@@ -361,14 +403,8 @@ const downloadCredentials = () =>
     ...credentials.value.map((c) => [c.name, c.email, c.password]),
   ]);
 
-const sendCredentials = async (options) => {
-  sending.value = true;
-  mailResult.value = null;
-  await run(async () => {
-    mailResult.value = (await api.post("/admin/participants/send-credentials", options)).data;
-  });
-  sending.value = false;
-};
+const sendCredentials = (options) =>
+  startMailJob("/admin/participants/send-credentials", options);
 
 const resendAll = () => {
   if (confirm("Всем участникам уйдут новые пароли, старые перестанут работать. Продолжить?")) {
@@ -378,7 +414,8 @@ const resendAll = () => {
 
 const startEdit = (p) => {
   editingId.value = p.id;
-  editForm.value = { name: p.name, email: p.email || "" };
+  editForm.value = { name: p.name, email: p.email || "", password: "" };
+  showEditPassword.value = false;
 };
 
 const saveEdit = (id) =>
@@ -414,6 +451,7 @@ onMounted(async () => {
   await load();
   try {
     mailConfigured.value = (await api.get("/admin/mail/status")).data.configured;
+    await refreshMailJob();
   } catch (e) {
     error.value = errorText(e);
   }
@@ -547,6 +585,25 @@ thead th {
 .actions {
   white-space: nowrap;
   text-align: right;
+}
+.edit-password {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 230px;
+}
+.edit-password input {
+  min-width: 140px;
+  width: 100%;
+}
+.password-visibility {
+  flex: 0 0 auto;
+}
+.edit-password + small {
+  display: block;
+  margin-top: 4px;
+  max-width: 240px;
+  line-height: 1.3;
 }
 .missing-email-row {
   background: var(--danger-soft);

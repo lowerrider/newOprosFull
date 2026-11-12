@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { requireAnyRole, requireRole } from "../auth.js";
 import { generatePassword, hashPassword } from "../passwords.js";
+import { createMailJobRunner } from "../mailJobs.js";
 import {
   HttpError,
   getRound,
@@ -22,6 +23,7 @@ function participantEmail(value, name) {
 
 export function adminRoutes(db, config, mailer) {
   const router = Router();
+  const mailJobs = createMailJobRunner();
   router.use(requireAnyRole(["admin", "superadmin"], config.jwtSecret));
 
   const roundParam = (req) => {
@@ -99,11 +101,23 @@ export function adminRoutes(db, config, mailer) {
     const name = String(req.body?.name || "").trim();
     if (!name) throw new HttpError(400, "Укажите ФИО");
     const email = participantEmail(req.body?.email, name);
-    const info = db
-      .prepare("UPDATE participants SET name = ?, email = ? WHERE id = ?")
-      .run(name, email, req.params.id);
+    const password = String(req.body?.password || "");
+    if (password && (password.length < 8 || password.length > 64)) {
+      throw new HttpError(400, "Пароль должен содержать от 8 до 64 символов");
+    }
+    const info = password
+      ? db
+          .prepare(
+            `UPDATE participants
+             SET name = ?, email = ?, password_hash = ?, credentials_sent_at = datetime('now')
+             WHERE id = ?`
+          )
+          .run(name, email, hashPassword(password), req.params.id)
+      : db
+          .prepare("UPDATE participants SET name = ?, email = ? WHERE id = ?")
+          .run(name, email, req.params.id);
     if (!info.changes) throw new HttpError(404, "Участник не найден");
-    res.json({ ok: true });
+    res.json({ ok: true, passwordChanged: Boolean(password) });
   });
 
   router.delete("/participants", (req, res) => {
@@ -154,6 +168,10 @@ export function adminRoutes(db, config, mailer) {
     res.json({ configured: mailer.configured });
   });
 
+  router.get("/mail/job", (req, res) => {
+    res.json({ job: mailJobs.get() });
+  });
+
   // Поимённая детализация голосов доступна только супер-администратору.
   router.get("/vote-audit", requireRole("superadmin", config.jwtSecret), (req, res) => {
     const rows = db
@@ -198,7 +216,7 @@ export function adminRoutes(db, config, mailer) {
 
   // Рассылка логина и пароля на почту. Пароль генерируется заново и сохраняется,
   // только если письмо ушло. body: { ids?: number[], onlyNotSent?: boolean }
-  router.post("/participants/send-credentials", async (req, res) => {
+  router.post("/participants/send-credentials", (req, res) => {
     if (!mailer.configured) {
       throw new HttpError(503, "Почта не настроена: заполните SMTP_* в .env бекенда");
     }
@@ -215,20 +233,21 @@ export function adminRoutes(db, config, mailer) {
     const save = db.prepare(
       "UPDATE participants SET password_hash = ?, credentials_sent_at = datetime('now') WHERE id = ?"
     );
-    const sent = [];
-    const failed = [];
-    for (const r of rows) {
-      const password = generatePassword();
-      try {
-        await mailer.sendCredentials({ name: r.name, email: r.email, password });
-        save.run(hashPassword(password), r.id);
-        sent.push(r.email);
-      } catch (error) {
-        console.error(`Не удалось отправить письмо ${r.email}:`, error.message);
-        failed.push({ email: r.email, error: error.message });
-      }
-    }
-    res.json({ sent, failed });
+    const job = mailJobs.start({
+      kind: "credentials",
+      items: rows,
+      send: async (participant) => {
+        const password = generatePassword();
+        await mailer.sendCredentials({
+          name: participant.name,
+          email: participant.email,
+          password,
+        });
+        save.run(hashPassword(password), participant.id);
+      },
+    });
+    if (!job) throw new HttpError(409, "Другая рассылка уже выполняется");
+    res.status(202).json({ job });
   });
 
   // === Номинации ===
@@ -325,7 +344,7 @@ export function adminRoutes(db, config, mailer) {
   });
 
   // Ручное уведомление о начале 2 этапа. Пароли участников не меняются.
-  router.post("/rounds/2/send-notice", async (req, res) => {
+  router.post("/rounds/2/send-notice", (req, res) => {
     if (!mailer.configured) {
       throw new HttpError(503, "Почта не настроена: заполните SMTP_* в .env бекенда");
     }
@@ -339,23 +358,18 @@ export function adminRoutes(db, config, mailer) {
          WHERE email IS NOT NULL ORDER BY name`
       )
       .all();
-    const sent = [];
-    const failed = [];
-
-    for (const participant of rows) {
-      try {
+    const job = mailJobs.start({
+      kind: "round2-notice",
+      items: rows,
+      send: async (participant) => {
         await mailer.sendRoundTwoNotice({
           name: participant.name,
           email: participant.email,
         });
-        sent.push(participant.email);
-      } catch (error) {
-        console.error(`Не удалось отправить письмо 2 этапа ${participant.email}:`, error.message);
-        failed.push({ email: participant.email, error: error.message });
-      }
-    }
-
-    res.json({ sent, failed });
+      },
+    });
+    if (!job) throw new HttpError(409, "Другая рассылка уже выполняется");
+    res.status(202).json({ job });
   });
 
   router.get("/rounds/:round/results", (req, res) => {

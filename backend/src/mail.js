@@ -60,8 +60,18 @@ export function createMailer(config) {
     host,
     port,
     secure,
+    pool: true,
+    maxConnections: 1,
+    maxMessages: 200,
+    rateDelta: 60_000,
+    rateLimit: 10,
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 30_000,
     auth: { user, pass },
     tls: { rejectUnauthorized: !host.includes("192.168") },
+    disableFileAccess: true,
+    disableUrlAccess: true,
   });
 
   return {

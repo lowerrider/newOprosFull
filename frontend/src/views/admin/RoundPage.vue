@@ -114,13 +114,17 @@
           </div>
         </div>
         <button type="button" :disabled="sendingRoundTwo" @click="sendRoundTwoNotice">
-          {{ sendingRoundTwo ? "Отправляю…" : "Разослать уведомление о 2 этапе" }}
+          {{ sendingRoundTwo ? `Отправка ${roundTwoMailResult.processed}/${roundTwoMailResult.total}` : "Разослать уведомление о 2 этапе" }}
         </button>
+        <p v-if="roundTwoMailError" class="mailing-result error" role="alert">{{ roundTwoMailError }}</p>
         <p
           v-if="roundTwoMailResult"
           class="mailing-result"
-          :class="roundTwoMailResult.failed.length ? 'error' : 'ok'"
+          :class="roundTwoMailResult.status === 'done' && roundTwoMailResult.failed.length ? 'error' : roundTwoMailResult.status === 'done' ? 'ok' : 'muted'"
           role="status">
+          <span v-if="roundTwoMailResult.status === 'running'">
+            Обработано: {{ roundTwoMailResult.processed }} из {{ roundTwoMailResult.total }}.
+          </span>
           Отправлено: {{ roundTwoMailResult.sent.length }}<span v-if="roundTwoMailResult.failed.length">,
           не удалось: {{ roundTwoMailResult.failed.length }}</span>
         </p>
@@ -191,6 +195,7 @@
 <script setup>
 import { ref, reactive, computed, watch, onMounted, onUnmounted } from "vue";
 import { api, errorText } from "@/api";
+import { useMailJob } from "@/composables/useMailJob";
 import { downloadCsv } from "@/utils/csv";
 import { state, reload, roundStatus, statusText } from "@/stores/admin";
 import CandidatePicker from "@/components/admin/CandidatePicker.vue";
@@ -204,8 +209,6 @@ const savedId = ref(null);
 const results = ref(null);
 const missing = ref(null);
 const showAll = reactive({});
-const sendingRoundTwo = ref(false);
-const roundTwoMailResult = ref(null);
 // Черновик номинантов по номинациям, сохранённый вариант — в state.nominations
 const draft = reactive({});
 
@@ -280,6 +283,14 @@ const run = async (action) => {
   }
 };
 
+const {
+  job: roundTwoMailResult,
+  error: roundTwoMailError,
+  running: sendingRoundTwo,
+  start: startRoundTwoMail,
+  refresh: refreshRoundTwoMail,
+} = useMailJob("round2-notice", reload);
+
 const saveCandidates = (n) =>
   run(async () => {
     await api.put(`/admin/rounds/${props.round}/nominations/${n.id}/candidates`, {
@@ -332,17 +343,8 @@ const sendRoundTwoNotice = async () => {
   );
   if (!confirmed) return;
 
-  sendingRoundTwo.value = true;
-  roundTwoMailResult.value = null;
   error.value = "";
-  try {
-    roundTwoMailResult.value = (await api.post("/admin/rounds/2/send-notice")).data;
-    await reload();
-  } catch (e) {
-    error.value = errorText(e);
-  } finally {
-    sendingRoundTwo.value = false;
-  }
+  await startRoundTwoMail("/admin/rounds/2/send-notice");
 };
 
 const reset = () => {
@@ -402,6 +404,7 @@ const exportResults = () =>
 let timer;
 onMounted(() => {
   loadResults();
+  refreshRoundTwoMail();
   timer = setInterval(() => status.value === "open" && loadResults(), 15000);
 });
 onUnmounted(() => clearInterval(timer));

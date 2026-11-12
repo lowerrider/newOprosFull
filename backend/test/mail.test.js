@@ -11,6 +11,15 @@ const config = {
   corsOrigin: [],
 };
 
+const waitForMailJob = async (call, token, kind) => {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const { body } = await call("GET", "/admin/mail/job", undefined, token);
+    if (body.job?.kind === kind && body.job.status === "done") return body.job;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`Рассылка ${kind} не завершилась вовремя`);
+};
+
 test("письмо с доступом содержит персональные данные и даты первого этапа", () => {
   const message = buildCredentialsMessage({
     name: "Репина Ольга Витальевна",
@@ -80,8 +89,9 @@ test("уведомление второго этапа отправляется 
     db.prepare("UPDATE rounds SET status = 'open' WHERE number = 2").run();
 
     const result = await call("POST", "/admin/rounds/2/send-notice", undefined, admin);
-    assert.equal(result.status, 200);
-    assert.deepEqual(result.body.sent, ["anna@test.ru"]);
+    assert.equal(result.status, 202);
+    const job = await waitForMailJob(call, admin, "round2-notice");
+    assert.deepEqual(job.sent, ["anna@test.ru"]);
     assert.equal(outbox.length, 1);
     assert.equal(outbox[0].name, "Анна");
 
@@ -137,9 +147,9 @@ test("рассылка паролей: пароль из письма работ
       admin,
     );
 
-    const first = (
-      await call("POST", "/admin/participants/send-credentials", {}, admin)
-    ).body;
+    const firstStart = await call("POST", "/admin/participants/send-credentials", {}, admin);
+    assert.equal(firstStart.status, 202);
+    const first = await waitForMailJob(call, admin, "credentials");
     assert.deepEqual(first.sent, ["anna@test.ru"]);
     assert.equal(first.failed[0].email, "bad@test.ru");
     assert.equal(outbox.length, 1);
@@ -151,9 +161,9 @@ test("рассылка паролей: пароль из письма работ
     assert.equal(login.status, 200);
 
     // повторная рассылка уходит только тем, кому ещё не отправили
-    const second = (
-      await call("POST", "/admin/participants/send-credentials", {}, admin)
-    ).body;
+    const secondStart = await call("POST", "/admin/participants/send-credentials", {}, admin);
+    assert.equal(secondStart.status, 202);
+    const second = await waitForMailJob(call, admin, "credentials");
     assert.deepEqual(second.sent, []);
     assert.equal(second.failed.length, 1);
 
