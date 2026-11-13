@@ -1,5 +1,5 @@
 <template>
-  <section>
+  <section :class="{ 'results-page': status !== 'draft' }">
     <div class="page-head">
       <div>
         <h1>
@@ -163,10 +163,21 @@
             v-for="(row, i) in n.results.slice(0, showAll[n.id] ? undefined : 10)"
             :key="row.id"
             class="result-row"
-            :class="{ leader: isLeader(n, row) }">
+            :class="{ leader: isLeader(n, row), withdrawn: row.withdrawnAt }">
             <span class="place">{{ i + 1 }}</span>
-            <span class="name">{{ row.name }}</span>
+            <span class="name">
+              {{ row.name }}
+              <small v-if="row.withdrawnAt" class="withdrawn-badge">снят</small>
+            </span>
             <span class="votes">{{ row.votes }}</span>
+            <button
+              v-if="status === 'open' && !row.withdrawnAt"
+              type="button"
+              class="ghost withdraw-button"
+              :disabled="withdrawingKey === `${n.id}:${row.id}`"
+              @click="withdrawCandidate(n, row)">
+              {{ withdrawingKey === `${n.id}:${row.id}` ? "Снимаю…" : "Снять" }}
+            </button>
             <div class="result-bar" :style="{ width: percent(row.votes, maxVotes(n)) }"></div>
           </div>
           <div class="row" style="margin: 8px 0 0">
@@ -209,6 +220,7 @@ const savedId = ref(null);
 const results = ref(null);
 const missing = ref(null);
 const showAll = reactive({});
+const withdrawingKey = ref("");
 // Черновик номинантов по номинациям, сохранённый вариант — в state.nominations
 const draft = reactive({});
 
@@ -243,7 +255,10 @@ const readyToOpen = computed(
 // Во 2 туре выбираем из номинантов 1 тура этой номинации
 const pool = (n) => {
   if (props.round === 1) return state.participants;
-  const ids = new Set([...n.candidates[1].map((c) => c.id), ...draft[n.id]]);
+  const ids = new Set([
+    ...n.candidates[1].filter((c) => !c.withdrawnAt).map((c) => c.id),
+    ...draft[n.id],
+  ]);
   return state.participants.filter((p) => ids.has(p.id));
 };
 
@@ -337,6 +352,27 @@ const closeRound = () => {
   }
 };
 
+const withdrawCandidate = async (nomination, candidate) => {
+  const confirmed = confirm(
+    `Снять «${candidate.name}» с номинации «${nomination.title}»?\n\n` +
+      `У новых голосующих кандидат исчезнет из списка. Уже отданные голоса (${candidate.votes}) сохранятся.`
+  );
+  if (!confirmed) return;
+
+  error.value = "";
+  withdrawingKey.value = `${nomination.id}:${candidate.id}`;
+  try {
+    await api.post(
+      `/admin/rounds/${props.round}/nominations/${nomination.id}/candidates/${candidate.id}/withdraw`
+    );
+    await Promise.all([reload(), loadResults()]);
+  } catch (e) {
+    error.value = errorText(e);
+  } finally {
+    withdrawingKey.value = "";
+  }
+};
+
 const sendRoundTwoNotice = async () => {
   const confirmed = confirm(
     "Отправить всем участникам с email уведомление о начале второго этапа?"
@@ -385,8 +421,8 @@ const maxVotes = (n) => Math.max(1, ...n.results.map((r) => r.votes));
 
 // 1 тур: топ-3 с учётом ничьей; 2 тур: победитель (или победители при ничьей)
 const isLeader = (n, row) => {
-  if (!row.votes) return false;
-  const withVotes = n.results.filter((r) => r.votes > 0);
+  if (!row.votes || row.withdrawnAt) return false;
+  const withVotes = n.results.filter((r) => r.votes > 0 && !r.withdrawnAt);
   const places = props.round === 1 ? 3 : 1;
   const threshold = withVotes[Math.min(places, withVotes.length) - 1].votes;
   return row.votes >= threshold;
@@ -394,10 +430,10 @@ const isLeader = (n, row) => {
 
 const exportResults = () =>
   downloadCsv(`results-round-${props.round}.csv`, [
-    ["Номинация", "Номинант", "Голосов"],
+    ["Номинация", "Номинант", "Голосов", "Статус"],
     ...results.value.nominations.flatMap((n) => [
-      ...n.results.map((row) => [n.title, row.name, row.votes]),
-      ...(n.skipped ? [[n.title, "Пропустили", n.skipped]] : []),
+      ...n.results.map((row) => [n.title, row.name, row.votes, row.withdrawnAt ? "Снят" : "Участвует"]),
+      ...(n.skipped ? [[n.title, "Пропустили", n.skipped, ""]] : []),
     ]),
   ]);
 
@@ -538,7 +574,7 @@ watch(status, loadResults);
 .result-row {
   position: relative;
   display: grid;
-  grid-template-columns: 26px 1fr auto;
+  grid-template-columns: 26px 1fr auto auto;
   gap: 8px;
   align-items: center;
   padding: 7px 8px;
@@ -547,6 +583,27 @@ watch(status, loadResults);
   overflow: hidden;
 }
 .result-row > span {
+  position: relative;
+  z-index: 1;
+}
+.result-row.withdrawn {
+  opacity: 0.68;
+}
+.result-row.withdrawn .result-bar {
+  background: var(--danger-soft);
+}
+.withdrawn-badge {
+  display: inline-block;
+  margin-left: 5px;
+  padding: 2px 6px;
+  border-radius: 99px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.withdraw-button {
   position: relative;
   z-index: 1;
 }

@@ -134,6 +134,121 @@ test("pickFinalists: топ-3 и ничья на 3-м месте", () => {
   ];
   assert.deepEqual(pickFinalists(rows).map((r) => r.id), [1, 2, 3, 4]);
   assert.deepEqual(pickFinalists([{ id: 1, votes: 1 }, { id: 2, votes: 0 }]).map((r) => r.id), [1]);
+  assert.deepEqual(
+    pickFinalists([{ id: 1, votes: 10, withdrawnAt: "2026-11-13" }, { id: 2, votes: 1 }]).map(
+      (r) => r.id
+    ),
+    [2]
+  );
+});
+
+test("снятый номинант скрывается из новых бюллетеней, но сохраняет старые голоса", async () => {
+  const { server, call } = await startServer();
+  try {
+    const admin = (await call("POST", "/auth/login", {
+      email: "admin@test",
+      password: "adminpass",
+    })).body.token;
+    await call("POST", "/admin/participants", [
+      { name: "Анна", email: "anna@test.ru" },
+      { name: "Борис", email: "boris@test.ru" },
+      { name: "Вера", email: "vera@test.ru" },
+    ], admin);
+    const participants = (await call("GET", "/admin/participants", undefined, admin)).body;
+    const ids = Object.fromEntries(participants.map((participant) => [participant.name, participant.id]));
+    const credentials = (await call("POST", "/admin/participants/passwords", {}, admin)).body;
+    const tokens = {};
+    for (const credential of credentials) {
+      tokens[credential.name] = (await call("POST", "/auth/login", {
+        email: credential.email,
+        password: credential.password,
+      })).body.token;
+    }
+
+    const nominationId = (await call(
+      "POST",
+      "/admin/nominations",
+      { title: "Номинация" },
+      admin
+    )).body.id;
+    await call(
+      "PUT",
+      `/admin/rounds/1/nominations/${nominationId}/candidates`,
+      { participantIds: Object.values(ids) },
+      admin
+    );
+    await call("POST", "/admin/rounds/1/open", undefined, admin);
+
+    assert.equal(
+      (await call(
+        "POST",
+        "/ballot",
+        { choices: { [nominationId]: ids["Борис"] } },
+        tokens["Анна"]
+      )).status,
+      201
+    );
+    assert.equal(
+      (await call(
+        "POST",
+        `/admin/rounds/1/nominations/${nominationId}/candidates/${ids["Борис"]}/withdraw`,
+        undefined,
+        admin
+      )).status,
+      200
+    );
+
+    const newBallot = (await call("GET", "/ballot", undefined, tokens["Вера"])).body;
+    assert.deepEqual(
+      newBallot.nominations[0].candidates.map((candidate) => candidate.name),
+      ["Анна", "Вера"]
+    );
+    assert.equal(
+      (await call(
+        "POST",
+        "/ballot",
+        { choices: { [nominationId]: ids["Борис"] } },
+        tokens["Вера"]
+      )).status,
+      409
+    );
+    assert.equal(
+      (await call(
+        "POST",
+        "/ballot",
+        { choices: { [nominationId]: ids["Вера"] } },
+        tokens["Вера"]
+      )).status,
+      201
+    );
+
+    const resultsAfterWithdrawal = (
+      await call("GET", "/admin/rounds/1/results", undefined, admin)
+    ).body;
+    const withdrawn = resultsAfterWithdrawal.nominations[0].results.find(
+      (candidate) => candidate.id === ids["Борис"]
+    );
+    assert.equal(withdrawn.votes, 1);
+    assert.ok(withdrawn.withdrawnAt);
+
+    await call(
+      "POST",
+      `/admin/rounds/1/nominations/${nominationId}/candidates/${ids["Анна"]}/withdraw`,
+      undefined,
+      admin
+    );
+    assert.equal(
+      (await call(
+        "POST",
+        `/admin/rounds/1/nominations/${nominationId}/candidates/${ids["Вера"]}/withdraw`,
+        undefined,
+        admin
+      )).status,
+      409
+    );
+  } finally {
+    server.close();
+  }
 });
 
 test("полный сценарий: участники, пароли, два тура", async () => {

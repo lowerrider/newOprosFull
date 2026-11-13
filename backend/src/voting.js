@@ -16,12 +16,13 @@ export function listNominations(db) {
     .all();
 }
 
-export function listCandidates(db, round, nominationId) {
+export function listCandidates(db, round, nominationId, { includeWithdrawn = true } = {}) {
   return db
     .prepare(
-      `SELECT p.id, p.name FROM candidates c
+      `SELECT p.id, p.name, c.withdrawn_at AS withdrawnAt FROM candidates c
        JOIN participants p ON p.id = c.participant_id
        WHERE c.round = ? AND c.nomination_id = ?
+         ${includeWithdrawn ? "" : "AND c.withdrawn_at IS NULL"}
        ORDER BY p.name`
     )
     .all(round, nominationId);
@@ -30,7 +31,10 @@ export function listCandidates(db, round, nominationId) {
 // Номинации тура вместе с номинантами (только те, где есть номинанты)
 export function ballotForRound(db, round) {
   return listNominations(db)
-    .map((n) => ({ ...n, candidates: listCandidates(db, round, n.id) }))
+    .map((n) => ({
+      ...n,
+      candidates: listCandidates(db, round, n.id, { includeWithdrawn: false }),
+    }))
     .filter((n) => n.candidates.length > 0);
 }
 
@@ -41,11 +45,19 @@ export function results(db, round) {
      WHERE b.round = ? AND v.nomination_id = ?
      GROUP BY v.candidate_id`
   );
-  const nominations = ballotForRound(db, round).map((n) => {
+  const nominations = listNominations(db)
+    .map((n) => ({ ...n, candidates: listCandidates(db, round, n.id) }))
+    .filter((n) => n.candidates.length > 0)
+    .map((n) => {
     const byId = new Map(counts.all(round, n.id).map((r) => [r.id, r.votes]));
     const rows = n.candidates
       .map((c) => ({ ...c, votes: byId.get(c.id) || 0 }))
-      .sort((a, b) => b.votes - a.votes || a.name.localeCompare(b.name, "ru"));
+      .sort(
+        (a, b) =>
+          Number(Boolean(a.withdrawnAt)) - Number(Boolean(b.withdrawnAt)) ||
+          b.votes - a.votes ||
+          a.name.localeCompare(b.name, "ru")
+      );
     return { ...n, candidates: undefined, results: rows, skipped: byId.get(null) || 0 };
   });
   const voted = db.prepare("SELECT COUNT(*) AS n FROM ballots WHERE round = ?").get(round).n;
@@ -57,7 +69,7 @@ export function results(db, round) {
 
 // Топ-3 каждой номинации. При ничьей на последнем месте проходят все с тем же числом голосов.
 export function pickFinalists(rows, count = FINALISTS) {
-  const withVotes = rows.filter((r) => r.votes > 0);
+  const withVotes = rows.filter((r) => r.votes > 0 && !r.withdrawnAt);
   if (withVotes.length <= count) return withVotes;
   const threshold = withVotes[count - 1].votes;
   return withVotes.filter((r) => r.votes >= threshold);
@@ -87,6 +99,19 @@ export function submitBallot(db, participantId, choices) {
       }
       const choice = choices[n.id];
       if (choice !== null && !n.candidates.some((c) => c.id === Number(choice))) {
+        const withdrawn = db
+          .prepare(
+            `SELECT 1 FROM candidates
+             WHERE round = ? AND nomination_id = ? AND participant_id = ?
+               AND withdrawn_at IS NOT NULL`
+          )
+          .get(round.number, n.id, Number(choice));
+        if (withdrawn) {
+          throw new HttpError(
+            409,
+            `Выбранный номинант в номинации «${n.title}» снят. Обновите страницу и выберите другого.`
+          );
+        }
         throw new HttpError(400, `Неверный номинант в номинации «${n.title}»`);
       }
       addVote.run(ballotId, n.id, choice === null ? null : Number(choice));

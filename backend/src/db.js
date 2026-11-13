@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS candidates (
   round          INTEGER NOT NULL REFERENCES rounds(number),
   nomination_id  INTEGER NOT NULL REFERENCES nominations(id) ON DELETE CASCADE,
   participant_id INTEGER NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
+  withdrawn_at   TEXT,
   PRIMARY KEY (round, nomination_id, participant_id)
 );
 
@@ -77,6 +78,11 @@ export function openDb(dbPath) {
   const columns = db.prepare("PRAGMA table_info(participants)").all().map((c) => c.name);
   if (!columns.includes("credentials_sent_at")) {
     db.exec("ALTER TABLE participants ADD COLUMN credentials_sent_at TEXT");
+  }
+  // Снятие номинанта во время открытого тура без удаления уже отданных за него голосов
+  const candidateColumns = db.prepare("PRAGMA table_info(candidates)").all().map((c) => c.name);
+  if (!candidateColumns.includes("withdrawn_at")) {
+    db.exec("ALTER TABLE candidates ADD COLUMN withdrawn_at TEXT");
   }
   return db;
 }

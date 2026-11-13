@@ -250,6 +250,9 @@ onMounted(async () => {
 .admin .content > section {
   max-width: 980px;
 }
+.admin .content > section.results-page {
+  max-width: none;
+}
 
 /* Общие элементы */
 .admin .page-head {

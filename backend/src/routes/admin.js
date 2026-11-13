@@ -302,6 +302,39 @@ export function adminRoutes(db, config, mailer) {
     res.json({ ok: true });
   });
 
+  // Снятие номинанта во время голосования. Связь и старые голоса сохраняются,
+  // но в новых бюллетенях этот человек больше не показывается.
+  router.post("/rounds/:round/nominations/:id/candidates/:participantId/withdraw", (req, res) => {
+    const round = roundParam(req);
+    if (getRound(db, round).status !== "open") {
+      throw new HttpError(409, "Снять номинанта можно только во время открытого тура");
+    }
+    const candidate = db
+      .prepare(
+        `SELECT withdrawn_at AS withdrawnAt FROM candidates
+         WHERE round = ? AND nomination_id = ? AND participant_id = ?`
+      )
+      .get(round, req.params.id, req.params.participantId);
+    if (!candidate) throw new HttpError(404, "Номинант не найден в этой номинации");
+    if (candidate.withdrawnAt) return res.json({ ok: true, alreadyWithdrawn: true });
+
+    const activeCount = db
+      .prepare(
+        `SELECT COUNT(*) AS count FROM candidates
+         WHERE round = ? AND nomination_id = ? AND withdrawn_at IS NULL`
+      )
+      .get(round, req.params.id).count;
+    if (activeCount <= 1) {
+      throw new HttpError(409, "Нельзя снять последнего активного номинанта");
+    }
+
+    db.prepare(
+      `UPDATE candidates SET withdrawn_at = datetime('now')
+       WHERE round = ? AND nomination_id = ? AND participant_id = ?`
+    ).run(round, req.params.id, req.params.participantId);
+    res.json({ ok: true, alreadyWithdrawn: false });
+  });
+
   // === Туры ===
   router.get("/rounds", (req, res) => {
     res.json(db.prepare("SELECT number, status FROM rounds ORDER BY number").all());
